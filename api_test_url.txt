@@ -1,0 +1,15 @@
+請在瀏覽器中訪問以下URL來測試Google Places API：
+
+https://maps.googleapis.com/maps/api/place/textsearch/json?query=京都+金閣寺&key=AIzaSyCUMU_mO0DJnAXhTlpMXgmVWA2XCQUZfaQ
+
+如果API金鑰有效且Places API已啟用，您應該會看到JSON格式的搜索結果。
+如果看到錯誤信息，請確保：
+1. 您已在Google Cloud Console中啟用Places API
+2. API金鑰沒有設置過於嚴格的限制
+3. 項目的結算已啟用（某些API需要啟用結算才能使用）
+
+您也可以嘗試創建一個新的API金鑰：
+1. 在Google Cloud Console中，選擇「API和服務」>「憑證」
+2. 點擊「創建憑證」>「API金鑰」
+3. 複製新生成的API金鑰
+4. 更新您的.env文件中的GOOGLE_PLACES_API_KEY值 
