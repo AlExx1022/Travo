@@ -374,7 +374,7 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         豐富後的旅遊計畫
     """
     # 獲取目的地
-    destination = travel_plan["metadata"]["destination"]
+    destination = travel_plan.get("destination")
     logger.info(f"開始豐富旅遊計畫: {destination}")
     
     # 創建新的旅遊計畫結構
@@ -382,27 +382,29 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         "plan_id": travel_plan.get("plan_id", f"plan_{datetime.now().strftime('%Y%m%d%H%M%S')}"),
         "user_id": travel_plan.get("user_id", "anonymous"),
         "title": travel_plan.get("title", f"{destination}旅遊計畫"),
-        "metadata": {
-            "destination": destination,
-            "start_date": travel_plan["metadata"]["start_date"],
-            "end_date": travel_plan["metadata"]["end_date"],
-            "duration_days": len(travel_plan["days"]),
-            "budget": travel_plan["metadata"]["budget"],
-            "interests": travel_plan["metadata"]["interests"],
-            "itinerary_preference": travel_plan["metadata"]["itinerary_preference"],
-            "travel_companions": travel_plan["metadata"]["travel_companions"],
-            "created_at": travel_plan["metadata"].get("created_at", datetime.now().isoformat()),
-            "updated_at": datetime.now().isoformat(),
-            "is_public": travel_plan["metadata"].get("is_public", False),
-            "version": "1.0"
-        },
-        "summary": travel_plan.get("summary", f"這是一個{len(travel_plan['days'])}天的{destination}旅行計畫，專注於{', '.join(travel_plan['metadata']['interests'])}。行程安排{travel_plan['metadata']['itinerary_preference']}，適合{travel_plan['metadata']['travel_companions']}。"),
-        "days": []
+        "destination": destination,
+        "start_date": travel_plan.get("start_date"),
+        "end_date": travel_plan.get("end_date"),
+        "duration_days": travel_plan.get("duration_days", len(travel_plan.get("days", []))),
+        "budget": travel_plan.get("budget"),
+        "interests": travel_plan.get("interests", []),
+        "itinerary_preference": travel_plan.get("itinerary_preference", "輕鬆"),
+        "travel_companions": travel_plan.get("travel_companions", "個人"),
+        "created_at": travel_plan.get("created_at", datetime.now()),
+        "updated_at": travel_plan.get("updated_at", datetime.now()),
+        "is_public": travel_plan.get("is_public", False),
+        "version": travel_plan.get("version", 1),
+        "days": [],
+        "transportation": travel_plan.get("transportation", {}),
+        "accommodation": travel_plan.get("accommodation", {}),
+        "budget_estimate": travel_plan.get("budget_estimate", {}),
+        "weather_forecast": travel_plan.get("weather_forecast", {}),
+        "additional_info": travel_plan.get("additional_info", {})
     }
     
     # 遍歷每天的行程
-    for day_data in travel_plan["days"]:
-        day_number = day_data["day"]
+    for day_data in travel_plan.get("days", []):
+        day_number = day_data.get("day", 1)
         logger.info(f"處理第 {day_number} 天")
         
         # 計算日期
@@ -417,12 +419,12 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         }
         
         # 遍歷每個景點
-        for i, place in enumerate(day_data["schedule"]):
-            logger.info(f"處理景點 {i+1}: {place['name']}")
+        for i, place in enumerate(day_data.get("schedule", [])):
+            logger.info(f"處理景點 {i+1}: {place.get('name', '未知地點')}")
             
             # 豐富景點資訊
             enriched_place = enrich_place_info(
-                place_name=place["name"],
+                place_name=place.get("name", "未知地點"),
                 destination=destination,
                 lat=place.get("lat", 0),
                 lng=place.get("lng", 0),
@@ -430,74 +432,12 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
             )
             
             # 保留原始的時間
-            enriched_place["time"] = place["time"]
+            enriched_place["time"] = place.get("time", "未指定時間")
             
             # 添加到日程中
             enriched_day["schedule"].append(enriched_place)
         
         # 添加到計畫中
         enriched_plan["days"].append(enriched_day)
-    
-    # 添加交通、住宿、預算和其他資訊
-    # 這些資訊可以從原始計畫中獲取，或者使用默認值
-    
-    enriched_plan["transportation"] = travel_plan.get("transportation", {
-        "arrival": {
-            "type": "未指定",
-            "details": "未提供到達交通資訊"
-        },
-        "departure": {
-            "type": "未指定",
-            "details": "未提供離開交通資訊"
-        },
-        "local": {
-            "options": [
-                {
-                    "type": "公共交通",
-                    "details": "可使用當地公共交通系統"
-                }
-            ]
-        }
-    })
-    
-    enriched_plan["accommodation"] = travel_plan.get("accommodation", {
-        "name": "未指定",
-        "address": "未提供住宿資訊",
-        "lat": 0,
-        "lng": 0,
-        "rating": None,
-        "price_level": None,
-        "website": None,
-        "phone": None,
-        "description": "未提供住宿詳細資訊"
-    })
-    
-    enriched_plan["budget_estimate"] = travel_plan.get("budget_estimate", {
-        "currency": "JPY",
-        "accommodation": 0,
-        "transportation": 0,
-        "food": 0,
-        "activities": 0,
-        "shopping": 0,
-        "total": 0,
-        "per_person": 0,
-        "notes": "未提供預算估計"
-    })
-    
-    enriched_plan["weather_forecast"] = travel_plan.get("weather_forecast", {
-        "average_temperature": "未知",
-        "conditions": "未提供天氣資訊",
-        "packing_tips": "建議查詢最新天氣預報"
-    })
-    
-    enriched_plan["additional_info"] = travel_plan.get("additional_info", {
-        "local_customs": "請尊重當地習俗和文化",
-        "emergency_contacts": {
-            "police": "110",
-            "ambulance": "119",
-            "tourist_information": "未提供"
-        },
-        "useful_phrases": []
-    })
     
     return enriched_plan 

@@ -220,46 +220,39 @@ def generate_travel_plan(destination: str, start_date: str, end_date: str,
     # 呼叫OpenAI API
     travel_plan = call_openai_api(prompt)
     
-    # 生成計畫ID
+    # 生成計畫ID（這將被MongoDB的_id取代，但保留供內部使用）
     plan_id = f"plan_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
     # 添加元數據
-    if "metadata" not in travel_plan:
-        travel_plan["metadata"] = {
-            "destination": destination,
-            "start_date": start_date,
-            "end_date": end_date,
-            "duration_days": days,
-            "budget": budget,
-            "interests": interests,
-            "itinerary_preference": itinerary_preference,
-            "travel_companions": travel_companions,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-            "is_public": False,
-            "version": "1.0"
-        }
+    current_time = datetime.now()
     
     # 添加計畫ID和用戶ID（如果尚未存在）
     if "plan_id" not in travel_plan:
         travel_plan["plan_id"] = plan_id
     
-    if "user_id" not in travel_plan:
-        travel_plan["user_id"] = "anonymous"
+    # 添加標準元數據字段
+    travel_plan["title"] = travel_plan.get("title", f"{destination}{days}日遊")
+    travel_plan["destination"] = destination
+    travel_plan["start_date"] = start_date
+    travel_plan["end_date"] = end_date
+    travel_plan["duration_days"] = days
+    travel_plan["budget"] = budget
+    travel_plan["interests"] = interests
+    travel_plan["itinerary_preference"] = itinerary_preference
+    travel_plan["travel_companions"] = travel_companions
+    travel_plan["created_at"] = current_time
+    travel_plan["updated_at"] = current_time
+    travel_plan["is_public"] = False
+    travel_plan["version"] = 1
     
     # 添加日期到每天的行程中（如果尚未存在）
     if "days" in travel_plan:
-        start = datetime.strptime(start_date, "%Y-%m-%d")
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         for i, day in enumerate(travel_plan["days"]):
             if "date" not in day or not day["date"]:
-                current_date = start + timedelta(days=i)
-                day["date"] = current_date.strftime("%Y-%m-%d")
+                day_date = start_dt + timedelta(days=i)
+                day["date"] = day_date.strftime("%Y-%m-%d")
     
-    # 使用Google Places API豐富旅遊計畫
-    try:
-        enriched_travel_plan = enrich_travel_plan(travel_plan)
-        return enriched_travel_plan
-    except Exception as e:
-        logger.error(f"豐富旅遊計畫時發生錯誤: {e}")
-        # 如果豐富過程失敗，返回原始計畫
-        return travel_plan 
+    # 添加豐富的地點資訊
+    enriched_plan = enrich_travel_plan(travel_plan)
+    return enriched_plan 

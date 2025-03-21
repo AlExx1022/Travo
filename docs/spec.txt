@@ -1,0 +1,124 @@
+**旅遊規劃應用規格書**
+
+## 1. 簡介
+本應用為一款旅遊規劃工具，使用者輸入目的地、旅行日期、預算、興趣及行程偏好後，應用會利用 ChatGPT 生成推薦景點，並透過 Google Places API 提供詳細資訊。行程可根據日期自動安排，使用者可手動調整並分享行程。
+
+登入
+
+## 2. 主要功能
+### 2.1 旅遊計畫生成
+- 使用者輸入以下條件：
+  - 目的地（輸入地點，如「東京」、「巴黎」）
+  - 旅行日期（選擇日期範圍）
+  - 預算（低、中、高） #拉桿
+  - 興趣（歷史、美食、文化體驗、自然風景、戶外活動、購物、夜生活、藝術與建築）
+  - 行程偏好（輕鬆 vs. 緊湊 VS. 無限制）
+  - 旅行對象(單獨、伴侶、家庭、朋友)
+- ChatGPT 根據熱門程度與當地評價推薦景點
+- 使用者可選擇生成的景點數量
+- Google Places API 取得景點詳細資訊（地址、評分、營業時間、圖片）
+- 依據日期自動安排行程，並允許使用者手動調整
+- 生成的行程可透過連結分享
+
+## 3. 技術架構
+### 3.1 前端
+- **技術選擇**: React
+- **功能**:
+  - UI 介面顯示旅遊計畫
+  - Google Maps 顯示景點位置
+  - 允許使用者調整行程
+  - 產生可分享的行程連結
+
+### 3.2 後端
+- **技術選擇**: Flask（Python）
+- **功能**:
+  - 處理使用者輸入並傳遞給 ChatGPT
+  - 串接 Google Places API 取得詳細資訊
+  - 提供 API 讓前端讀取行程內容
+  - 生成並管理可分享的行程連結
+
+### 3.3 資料庫
+- **技術選擇**: MongoDB（NoSQL）
+- **存儲內容**:
+  - `destination`: 目的地
+  - `travel_dates`: 旅行日期範圍
+  - `budget`: 預算級別
+  - `interests`: 使用者興趣
+  - `itinerary_preference`: 行程偏好
+  - `places`: 包含每日行程的清單
+  - `created_at`: 行程建立時間
+
+## 4. API 規劃
+| API 路徑 | 方法 | 描述 |
+|---|---|---|
+| `/generate_plan` | POST | 根據使用者輸入產生旅遊計畫 |
+| `/get_plan/{id}` | GET | 取得指定 ID 的旅遊計畫 |
+| `/update_plan/{id}` | PUT | 使用者手動調整行程 |
+| `/delete_plan/{id}` | DELETE | 刪除指定的行程 |
+
+
+
+```
+
+graph TD;
+  A[使用者輸入條件] -->|送出請求| B[前端發送 API 請求]
+  B -->|傳送到 Flask API| C[後端處理請求]
+  C -->|ChatGPT 生成景點建議| D[取得景點推薦]
+  C -->|Google Places API 獲取詳細資訊| E[獲取景點資訊]
+  C -->|安排每日行程| F[行程規劃完成]
+  F -->|存儲到 MongoDB| G[存入資料庫並產生分享連結]
+  G -->|返回前端| H[前端獲取行程並顯示]
+  H -->|顯示行程 & Google Maps| I[使用者查看行程]
+  I -->|可手動調整行程| J[使用者更新行程]
+  J -->|更新到資料庫| G
+  I -->|分享行程連結| K[他人可透過連結查看行程]
+
+```
+
+![未命名绘图.drawio](https://hackmd.io/_uploads/rJ7VkSnckl.png)
+
+
+# prompt
+
+是一位專業的旅遊行程規劃師，請根據以下條件設計 **{Day} 天的 {destinction} 旅遊行程**，並以 **JSON 格式** 輸出，確保符合使用者的興趣與需求。  
+
+### **使用者需求**  
+- **目的地**：{}  
+- **旅行日期**：{}  
+- **預算**：{}TWD（請根據預算選擇合適的體驗）  
+- **興趣**：{戶外活動、歷史、美食}（請根據這些興趣挑選景點和活動）  
+- **行程偏好**：{無限制}（輕鬆：2~3 個行程/天，緊湊：3~4 個行程/天，無限制：可安排更多）  
+- **旅行對象**：{朋友}（請根據對象調整推薦，例如親子友善、浪漫行程等）  
+
+### **輸出格式**
+請直接輸出 **JSON**，結構如下：
+```json
+{
+  "days": [
+    {
+      "day": 1,
+      "schedule": [
+        {
+          "time": "08:00",
+          "type": "景點/餐廳",
+          "name": "名稱",
+          "lat": 35.6655,
+          "lng": 139.7707
+        }
+      ]
+    }
+  ]
+}
+
+```
+
+
+參考範例
+https://wonderplan.ai/
+
+
+
+chatgpt api keys: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
+google map api : AIzaSyA1OCHQq10BS8v9pRv-oPsnPbNp8Hx5e2A
+
+存log
