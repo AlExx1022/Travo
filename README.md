@@ -15,7 +15,7 @@
 ## 技術架構
 
 - 後端：Flask (Python)
-- 前端：計劃使用 Next.js + Tailwind CSS
+- 前端：計劃使用 React + Tailwind CSS
 - AI：OpenAI GPT API
 - 地點資訊：Google Places API
 - 資料庫：MongoDB
@@ -240,7 +240,7 @@ travo/
 
 ## 進行中的工作
 
-- [ ] 開發前端界面 (Next.js + Tailwind CSS)
+- [ ] 開發前端界面 (React + Tailwind CSS)
 
 ## 未來計畫
 
