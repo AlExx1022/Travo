@@ -6,6 +6,12 @@ import json
 import time
 import getpass
 import argparse  # 添加參數解析庫
+import logging
+from datetime import datetime, timedelta
+
+# 設置日誌
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # API 基本URL
 BASE_URL = "http://localhost:5000/api"
@@ -506,5 +512,60 @@ def main():
     print("\n===== 測試完成 =====")
     print("API 操作已完成！您可以在系統中查看創建的旅行計劃。")
 
+def test_generate_travel_plan(token):
+    """測試生成旅行計劃 API"""
+    
+    # 計算未來的日期（3個月後開始的5天行程）
+    today = datetime.now()
+    start_date = today + timedelta(days=90)  # 3個月後
+    end_date = start_date + timedelta(days=4)  # 5天行程
+    
+    # 準備請求數據
+    payload = {
+        "destination": "京都",
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "budget": "50000",
+        "interests": ["歷史", "文化", "寺廟", "美食"],
+        "preference": "放鬆",
+        "companions": "夫妻"
+    }
+    
+    # 設置請求頭
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    
+    logger.info(f"發送請求到 {BASE_URL}/travel-plans/generate")
+    logger.info(f"請求數據: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+    
+    try:
+        # 發送 POST 請求
+        response = requests.post(f"{BASE_URL}/travel-plans/generate", headers=headers, json=payload)
+        
+        # 檢查響應
+        if response.status_code == 201:
+            logger.info("請求成功!")
+            result = response.json()
+            logger.info(f"響應數據: {json.dumps(result, ensure_ascii=False, indent=2)}")
+            logger.info(f"生成的旅行計劃 ID: {result.get('plan_id')}")
+            return result.get('plan_id')
+        else:
+            logger.error(f"請求失敗，狀態碼: {response.status_code}")
+            logger.error(f"錯誤信息: {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"發送請求時發生錯誤: {e}")
+        return None
+
 if __name__ == "__main__":
-    main() 
+    # 執行主流程
+    print("執行主要測試流程...")
+    main()
+    
+    # 如果需要單獨測試生成旅行計劃功能，請取消下面的註釋並提供有效的令牌
+    # print("\n單獨測試生成旅行計劃API...")
+    # test_token = "your_valid_token_here"  # 替換為有效的身份驗證令牌
+    # test_generate_travel_plan(test_token) 

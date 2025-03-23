@@ -24,27 +24,60 @@ logger.info(f"Google Places API Key: {GOOGLE_PLACES_API_KEY[:5]}...{GOOGLE_PLACE
 place_search_cache = {}  # 用於存儲地點搜索結果
 place_details_cache = {}  # 用於存儲地點詳細信息
 
-def is_api_key_valid() -> bool:
-    """檢查API金鑰是否有效"""
-    # 使用簡單的請求測試API金鑰
-    params = {
-        "query": "Tokyo Tower",
-        "key": GOOGLE_PLACES_API_KEY
-    }
+def is_api_key_valid(max_retries: int = 2) -> bool:
+    """
+    檢查API金鑰是否有效
     
-    try:
-        response = requests.get(PLACES_SEARCH_URL, params=params)
-        result = response.json()
-        
-        if result.get("status") == "REQUEST_DENIED":
-            logger.warning(f"API金鑰無效或未授權: {result.get('error_message')}")
-            return False
-        else:
-            logger.info(f"API金鑰有效，回應狀態: {result.get('status')}")
-            return True
-    except Exception as e:
-        logger.error(f"測試API金鑰時發生錯誤: {e}")
+    Args:
+        max_retries: 最大重試次數
+    
+    Returns:
+        如果API金鑰有效返回True，否則返回False
+    """
+    # 使用簡單的請求測試API金鑰
+    logger.info(f"開始檢查Google Places API金鑰 {GOOGLE_PLACES_API_KEY[:5]}...{GOOGLE_PLACES_API_KEY[-5:]} 有效性")
+    
+    if not GOOGLE_PLACES_API_KEY:
+        logger.error("未設置Google Places API金鑰")
         return False
+    
+    # 測試不同的知名地標，如果一個失敗，嘗試另一個
+    test_landmarks = ["Tokyo Tower", "Eiffel Tower", "Statue of Liberty"]
+    
+    for attempt in range(max_retries):
+        for landmark in test_landmarks:
+            try:
+                params = {
+                    "query": landmark,
+                    "key": GOOGLE_PLACES_API_KEY
+                }
+                
+                logger.info(f"嘗試使用地標 '{landmark}' 測試API金鑰 (嘗試 {attempt+1}/{max_retries})")
+                response = requests.get(PLACES_SEARCH_URL, params=params, timeout=10)  # 添加超時
+                result = response.json()
+                
+                if result.get("status") == "OK":
+                    logger.info(f"API金鑰有效，使用地標 '{landmark}' 成功獲取結果")
+                    return True
+                elif result.get("status") == "REQUEST_DENIED":
+                    error_message = result.get("error_message", "未知錯誤")
+                    logger.warning(f"API金鑰無效或未授權: {error_message}")
+                    # 如果明確指出是金鑰問題，立即返回
+                    if "API key" in error_message:
+                        return False
+                else:
+                    logger.warning(f"API測試回應狀態: {result.get('status')}, 錯誤信息: {result.get('error_message', '無')}")
+            
+            except requests.exceptions.Timeout:
+                logger.warning(f"API請求超時，嘗試使用另一個地標")
+                continue
+                
+            except Exception as e:
+                logger.error(f"測試API金鑰時發生錯誤: {e}")
+                continue
+    
+    logger.error(f"所有API測試嘗試均失敗，API金鑰可能無效")
+    return False
 
 def search_place(place_name: str, destination: str) -> Optional[Dict[str, Any]]:
     """
@@ -159,9 +192,13 @@ def get_photo_url(photo_reference: str, max_width: int = 400) -> Optional[str]:
     Returns:
         照片URL
     """
-    # 構建照片URL
+    # 構建照片URL，使用實際的API金鑰
     photo_url = f"{PLACES_PHOTO_URL}?maxwidth={max_width}&photoreference={photo_reference}&key={GOOGLE_PLACES_API_KEY}"
-    logger.info(f"構建照片URL: {photo_url[:50]}...")
+    
+    # 為了安全起見，不在日誌中顯示完整URL（包含API金鑰）
+    safe_log_url = f"{PLACES_PHOTO_URL}?maxwidth={max_width}&photoreference={photo_reference[:10]}...&key=**HIDDEN**"
+    logger.info(f"構建照片URL: {safe_log_url}")
+    
     return photo_url
 
 def get_place_description(place_name: str, place_type: str) -> str:
@@ -341,13 +378,21 @@ def enrich_place_info(place_name: str, destination: str, lat: float, lng: float,
                 
                 # 更新照片 (最多三張)
                 if "photos" in place_details:
+                    photo_count = 0
                     for photo in place_details["photos"][:3]:
                         photo_reference = photo.get("photo_reference")
                         if photo_reference:
-                            photo_url = get_photo_url(photo_reference)
-                            enriched_place["photos"].append(photo_url)
+                            try:
+                                photo_url = get_photo_url(photo_reference)
+                                enriched_place["photos"].append(photo_url)
+                                photo_count += 1
+                                logger.info(f"添加照片 {photo_count}: {photo_url[:50]}...")
+                            except Exception as e:
+                                logger.error(f"獲取照片URL時發生錯誤: {e}")
                     
-                    logger.info(f"照片數量: {len(enriched_place['photos'])}")
+                    logger.info(f"總共添加照片數量: {photo_count}")
+                else:
+                    logger.warning(f"地點無照片資訊: {place_name}")
                 
                 # 生成描述 (如果還沒有描述)
                 if not enriched_place.get("description"):
@@ -375,13 +420,36 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         豐富後的旅遊計畫
     """
+    # 檢查傳入的旅遊計畫是否有效
+    if not travel_plan:
+        logger.error("傳入的旅遊計畫為空")
+        return {}
+    
     # 獲取目的地
     destination = travel_plan.get("destination")
+    if not destination:
+        logger.error("旅遊計畫中缺少目的地資訊")
+        return travel_plan
+    
     logger.info(f"開始豐富旅遊計畫: {destination}")
+    
+    # 獲取計畫ID或生成新ID
+    plan_id = travel_plan.get("plan_id")
+    if not plan_id:
+        plan_id = f"plan_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        logger.info(f"生成新的計畫ID: {plan_id}")
+    
+    # 處理日期時間值
+    created_at = travel_plan.get("created_at", datetime.now())
+    if isinstance(created_at, datetime):
+        created_at = created_at.isoformat()
+    
+    updated_at = datetime.now()
+    updated_at_str = updated_at.isoformat()
     
     # 創建新的旅遊計畫結構
     enriched_plan = {
-        "plan_id": travel_plan.get("plan_id", f"plan_{datetime.now().strftime('%Y%m%d%H%M%S')}"),
+        "plan_id": plan_id,
         "user_id": travel_plan.get("user_id", "anonymous"),
         "title": travel_plan.get("title", f"{destination}旅遊計畫"),
         "destination": destination,
@@ -392,56 +460,100 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         "interests": travel_plan.get("interests", []),
         "itinerary_preference": travel_plan.get("itinerary_preference", "輕鬆"),
         "travel_companions": travel_plan.get("travel_companions", "個人"),
-        "created_at": travel_plan.get("created_at", datetime.now()),
-        "updated_at": travel_plan.get("updated_at", datetime.now()),
+        "created_at": created_at,
+        "updated_at": updated_at_str,  # 使用字符串格式
         "is_public": travel_plan.get("is_public", False),
         "version": travel_plan.get("version", 1),
         "days": []
     }
     
+    # 檢查是否有日程資料
+    days_data = travel_plan.get("days", [])
+    if not days_data:
+        logger.warning("旅遊計畫中沒有日程資料")
+        return enriched_plan
+    
     # 遍歷每天的行程
-    for day_data in travel_plan.get("days", []):
-        day_number = day_data.get("day", 1)
-        logger.info(f"處理第 {day_number} 天")
-        
-        # 創建新的日程結構
-        enriched_day = {
-            "day": day_number,
-            "date": day_data.get("date", ""),  # 如果原始數據中有日期則使用，否則留空
-            "activities": []
-        }
-        
-        # 檢查是否使用 activities 或 schedule 結構
-        activities_list = day_data.get("activities", [])
-        if not activities_list and "schedule" in day_data:
-            activities_list = day_data.get("schedule", [])
-            logger.info(f"使用 schedule 結構: {len(activities_list)} 個活動")
-        else:
-            logger.info(f"使用 activities 結構: {len(activities_list)} 個活動")
-        
-        # 遍歷每個景點/活動
-        for i, place in enumerate(activities_list):
-            place_name = place.get("name", place.get("location", "未知地點"))
-            logger.info(f"處理景點 {i+1}: {place_name}")
+    try:
+        for i, day_data in enumerate(days_data):
+            day_number = day_data.get("day", i + 1)
+            logger.info(f"處理第 {day_number} 天行程")
             
-            # 豐富景點資訊
-            enriched_place = enrich_place_info(
-                place_name=place_name,
-                destination=destination,
-                lat=place.get("lat", 0),
-                lng=place.get("lng", 0),
-                place_type=place.get("type", "景點")
-            )
+            # 創建新的日程結構
+            enriched_day = {
+                "day": day_number,
+                "date": day_data.get("date", ""),  # 如果原始數據中有日期則使用，否則留空
+                "activities": []
+            }
             
-            # 保留原始的時間和其他可能的欄位
-            enriched_place["time"] = place.get("time", "未指定時間")
-            if "description" in place and place["description"]:
-                enriched_place["description"] = place["description"]
+            # 檢查是否使用 activities 或 schedule 結構
+            activities_list = day_data.get("activities", [])
+            if not activities_list and "schedule" in day_data:
+                activities_list = day_data.get("schedule", [])
+                logger.info(f"使用 schedule 結構: {len(activities_list)} 個活動")
+            else:
+                logger.info(f"使用 activities 結構: {len(activities_list)} 個活動")
             
-            # 添加到日程中
-            enriched_day["activities"].append(enriched_place)
-        
-        # 添加到計畫中
-        enriched_plan["days"].append(enriched_day)
+            if not activities_list:
+                logger.warning(f"第 {day_number} 天沒有活動資料")
+                enriched_plan["days"].append(enriched_day)
+                continue
+            
+            # 遍歷每個景點/活動
+            for j, place in enumerate(activities_list):
+                place_name = place.get("name", place.get("location", "未知地點"))
+                logger.info(f"處理第 {day_number} 天第 {j+1} 個景點: {place_name}")
+                
+                try:
+                    # 豐富景點資訊
+                    enriched_place = enrich_place_info(
+                        place_name=place_name,
+                        destination=destination,
+                        lat=place.get("lat", 0),
+                        lng=place.get("lng", 0),
+                        place_type=place.get("type", "景點")
+                    )
+                    
+                    # 保留原始的時間和其他可能的欄位
+                    enriched_place["time"] = place.get("time", "未指定時間")
+                    if "description" in place and place["description"]:
+                        enriched_place["description"] = place["description"]
+                    
+                    # 添加到日程中
+                    enriched_day["activities"].append(enriched_place)
+                    logger.info(f"成功添加景點 {place_name} 的豐富資訊")
+                except Exception as e:
+                    logger.error(f"處理景點 {place_name} 時發生錯誤: {e}")
+                    # 如果豐富失敗，仍添加原始景點資訊
+                    enriched_day["activities"].append(place)
+            
+            # 添加到計畫中
+            enriched_plan["days"].append(enriched_day)
+            logger.info(f"完成第 {day_number} 天行程處理，共 {len(enriched_day['activities'])} 個活動")
+    
+    except Exception as e:
+        logger.error(f"豐富旅遊計畫時發生錯誤: {e}")
+        # 發生錯誤時仍然返回部分處理的結果
+    
+    logger.info(f"完成豐富旅遊計畫: {destination}，共 {len(enriched_plan['days'])} 天行程")
+    
+    # 確保所有datetime對象都被轉換為字符串
+    def convert_datetime(obj):
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if isinstance(value, datetime):
+                    obj[key] = value.isoformat()
+                elif isinstance(value, dict) or isinstance(value, list):
+                    convert_datetime(value)
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                if isinstance(item, datetime):
+                    obj[i] = item.isoformat()
+                elif isinstance(item, dict) or isinstance(item, list):
+                    convert_datetime(item)
+        return obj
+    
+    # 處理整個數據結構
+    enriched_plan = convert_datetime(enriched_plan)
     
     return enriched_plan 
