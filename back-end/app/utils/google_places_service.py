@@ -20,6 +20,10 @@ PLACES_PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo"
 
 logger.info(f"Google Places API Key: {GOOGLE_PLACES_API_KEY[:5]}...{GOOGLE_PLACES_API_KEY[-5:]}")
 
+# 簡單的緩存機制
+place_search_cache = {}  # 用於存儲地點搜索結果
+place_details_cache = {}  # 用於存儲地點詳細信息
+
 def is_api_key_valid() -> bool:
     """檢查API金鑰是否有效"""
     # 使用簡單的請求測試API金鑰
@@ -55,6 +59,13 @@ def search_place(place_name: str, destination: str) -> Optional[Dict[str, Any]]:
     """
     # 構建查詢字符串（結合目的地和景點名稱）
     query = f"{destination} {place_name}"
+    cache_key = query.lower()
+    
+    # 檢查緩存
+    if cache_key in place_search_cache:
+        logger.info(f"從緩存中獲取地點搜索結果: {query}")
+        return place_search_cache[cache_key]
+    
     logger.info(f"搜索地點: {query}")
     
     # 設置請求參數
@@ -77,9 +88,11 @@ def search_place(place_name: str, destination: str) -> Optional[Dict[str, Any]]:
         if result["status"] == "OK" and len(result["results"]) > 0:
             # 返回第一個結果
             logger.info(f"找到地點: {result['results'][0].get('name')}")
+            place_search_cache[cache_key] = result["results"][0]  # 存入緩存
             return result["results"][0]
         else:
             logger.warning(f"未找到地點: {query}, 狀態: {result.get('status')}, 錯誤信息: {result.get('error_message', '無')}")
+            place_search_cache[cache_key] = None  # 緩存無結果
             return None
             
     except requests.exceptions.RequestException as e:
@@ -96,12 +109,17 @@ def get_place_details(place_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         包含地點詳細資訊的字典，如果未找到則返回None
     """
+    # 檢查緩存
+    if place_id in place_details_cache:
+        logger.info(f"從緩存中獲取地點詳細信息: {place_id}")
+        return place_details_cache[place_id]
+    
     logger.info(f"獲取地點詳細資訊: {place_id}")
     
     # 設置請求參數
     params = {
         "place_id": place_id,
-        "fields": "name,rating,formatted_address,opening_hours,photos,reviews,website,formatted_phone_number,price_level,types",
+        "fields": "name,rating,formatted_address,opening_hours,photos,types",
         "key": GOOGLE_PLACES_API_KEY
     }
     
@@ -119,9 +137,11 @@ def get_place_details(place_id: str) -> Optional[Dict[str, Any]]:
         if result["status"] == "OK":
             # 返回結果
             logger.info(f"找到地點詳細資訊: {result['result'].get('name')}")
+            place_details_cache[place_id] = result["result"]  # 存入緩存
             return result["result"]
         else:
             logger.warning(f"未找到地點詳細資訊: {place_id}, 狀態: {result.get('status')}, 錯誤信息: {result.get('error_message', '無')}")
+            place_details_cache[place_id] = None  # 緩存無結果
             return None
             
     except requests.exceptions.RequestException as e:
@@ -268,22 +288,17 @@ def enrich_place_info(place_name: str, destination: str, lat: float, lng: float,
     # 初始化豐富的景點資訊
     enriched_place = {
         "name": place_name,
+        "location": place_name,
         "type": place_type,
+        "time": "",  # 將在 enrich_travel_plan 中從原始數據填充
         "duration_minutes": estimate_duration(place_type),
         "lat": lat,
         "lng": lng,
         "place_id": None,
         "address": None,
         "rating": None,
-        "opening_hours": None,
         "photos": [],
-        "thumbnail": None,
-        "website": None,
-        "phone": None,
-        "price_level": None,
-        "description": get_place_description(place_name, place_type),
-        "tips": get_place_tips(place_type),
-        "tags": []
+        "description": ""
     }
     
     # 搜索地點
@@ -319,47 +334,34 @@ def enrich_place_info(place_name: str, destination: str, lat: float, lng: float,
                 enriched_place["rating"] = place_details.get("rating")
                 logger.info(f"評分: {enriched_place['rating']}")
                 
-                # 更新營業時間
+                # 更新營業時間 (僅如果地點有營業時間)
                 if "opening_hours" in place_details and "weekday_text" in place_details["opening_hours"]:
                     enriched_place["opening_hours"] = place_details["opening_hours"]["weekday_text"]
                     logger.info(f"營業時間: {enriched_place['opening_hours']}")
                 
-                # 更新照片
+                # 更新照片 (最多三張)
                 if "photos" in place_details:
-                    for photo in place_details["photos"][:3]:  # 最多取3張照片
+                    for photo in place_details["photos"][:3]:
                         photo_reference = photo.get("photo_reference")
                         if photo_reference:
                             photo_url = get_photo_url(photo_reference)
                             enriched_place["photos"].append(photo_url)
                     
-                    # 設置縮略圖（使用第一張照片，但寬度較小）
-                    if place_details["photos"] and place_details["photos"][0].get("photo_reference"):
-                        thumbnail_reference = place_details["photos"][0].get("photo_reference")
-                        enriched_place["thumbnail"] = get_photo_url(thumbnail_reference, max_width=200)
-                    
                     logger.info(f"照片數量: {len(enriched_place['photos'])}")
                 
-                # 更新網站
-                enriched_place["website"] = place_details.get("website")
-                logger.info(f"網站: {enriched_place['website']}")
-                
-                # 更新電話
-                enriched_place["phone"] = place_details.get("formatted_phone_number")
-                logger.info(f"電話: {enriched_place['phone']}")
-                
-                # 更新價格等級
-                enriched_place["price_level"] = place_details.get("price_level")
-                logger.info(f"價格等級: {enriched_place['price_level']}")
-                
-                # 生成標籤
-                enriched_place["tags"] = get_place_tags(place_type, place_details)
-                logger.info(f"標籤: {enriched_place['tags']}")
+                # 生成描述 (如果還沒有描述)
+                if not enriched_place.get("description"):
+                    enriched_place["description"] = get_place_description(place_name, place_type)
+                    logger.info(f"描述: {enriched_place['description'][:30]}...")
             else:
                 logger.warning(f"未能獲取地點詳細資訊: {place_name}")
         else:
             logger.warning(f"未獲取到地點ID: {place_name}")
     else:
         logger.warning(f"未能搜索到地點: {place_name}")
+        # 使用簡單描述
+        if not enriched_place.get("description"):
+            enriched_place["description"] = get_place_description(place_name, place_type)
     
     return enriched_place
 
@@ -394,12 +396,7 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": travel_plan.get("updated_at", datetime.now()),
         "is_public": travel_plan.get("is_public", False),
         "version": travel_plan.get("version", 1),
-        "days": [],
-        "transportation": travel_plan.get("transportation", {}),
-        "accommodation": travel_plan.get("accommodation", {}),
-        "budget_estimate": travel_plan.get("budget_estimate", {}),
-        "weather_forecast": travel_plan.get("weather_forecast", {}),
-        "additional_info": travel_plan.get("additional_info", {})
+        "days": []
     }
     
     # 遍歷每天的行程
@@ -407,35 +404,42 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         day_number = day_data.get("day", 1)
         logger.info(f"處理第 {day_number} 天")
         
-        # 計算日期
-        # 這裡假設start_date格式為YYYY-MM-DD
-        
         # 創建新的日程結構
         enriched_day = {
             "day": day_number,
             "date": day_data.get("date", ""),  # 如果原始數據中有日期則使用，否則留空
-            "summary": day_data.get("summary", f"第{day_number}天的行程"),
-            "schedule": []
+            "activities": []
         }
         
-        # 遍歷每個景點
-        for i, place in enumerate(day_data.get("schedule", [])):
-            logger.info(f"處理景點 {i+1}: {place.get('name', '未知地點')}")
+        # 檢查是否使用 activities 或 schedule 結構
+        activities_list = day_data.get("activities", [])
+        if not activities_list and "schedule" in day_data:
+            activities_list = day_data.get("schedule", [])
+            logger.info(f"使用 schedule 結構: {len(activities_list)} 個活動")
+        else:
+            logger.info(f"使用 activities 結構: {len(activities_list)} 個活動")
+        
+        # 遍歷每個景點/活動
+        for i, place in enumerate(activities_list):
+            place_name = place.get("name", place.get("location", "未知地點"))
+            logger.info(f"處理景點 {i+1}: {place_name}")
             
             # 豐富景點資訊
             enriched_place = enrich_place_info(
-                place_name=place.get("name", "未知地點"),
+                place_name=place_name,
                 destination=destination,
                 lat=place.get("lat", 0),
                 lng=place.get("lng", 0),
                 place_type=place.get("type", "景點")
             )
             
-            # 保留原始的時間
+            # 保留原始的時間和其他可能的欄位
             enriched_place["time"] = place.get("time", "未指定時間")
+            if "description" in place and place["description"]:
+                enriched_place["description"] = place["description"]
             
             # 添加到日程中
-            enriched_day["schedule"].append(enriched_place)
+            enriched_day["activities"].append(enriched_place)
         
         # 添加到計畫中
         enriched_plan["days"].append(enriched_day)

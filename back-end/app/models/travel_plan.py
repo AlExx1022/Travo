@@ -43,11 +43,6 @@ class TravelPlan:
             "start_date": plan_data.get("start_date", ""),
             "end_date": plan_data.get("end_date", ""),
             "days": plan_data.get("days", []),
-            "transportation": plan_data.get("transportation", {}),
-            "accommodation": plan_data.get("accommodation", {}),
-            "budget_estimate": plan_data.get("budget_estimate", {}),
-            "weather_forecast": plan_data.get("weather_forecast", {}),
-            "additional_info": plan_data.get("additional_info", {})
         }
         
         try:

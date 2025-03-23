@@ -7,6 +7,7 @@ import jwt
 from app.models.travel_plan import TravelPlan
 from app.api import api_bp
 from app.utils.gpt_service import generate_travel_plan as gpt_generate_travel_plan
+from app.utils.google_places_service import enrich_travel_plan, is_api_key_valid
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -122,12 +123,7 @@ def get_travel_plan(plan_id):
         'destination': plan['destination'],
         'start_date': plan['start_date'],
         'end_date': plan['end_date'],
-        'days': plan['days'],
-        'transportation': plan['transportation'],
-        'accommodation': plan['accommodation'],
-        'budget_estimate': plan['budget_estimate'],
-        'weather_forecast': plan['weather_forecast'],
-        'additional_info': plan['additional_info']
+        'days': plan['days']
     }
     
     return jsonify({
@@ -291,7 +287,7 @@ def generate_travel_plan():
         "destination": "東京",
         "start_date": "2023-10-01",
         "end_date": "2023-10-05",
-        "budget": "中",
+        "budget": "30000",
         "interests": ["歷史", "美食", "文化體驗"],
         "preference": "輕鬆",
         "companions": "家庭"
@@ -315,11 +311,23 @@ def generate_travel_plan():
             destination=data['destination'],
             start_date=data['start_date'],
             end_date=data['end_date'],
-            budget=data.get('budget', '中'),
+            budget=data.get('budget', '30000'),
             interests=data.get('interests', []),
             itinerary_preference=data.get('preference', '輕鬆'),
             travel_companions=data.get('companions', '個人')
         )
+        
+        # 使用 Google Places API 豐富旅行計劃
+        try:
+            # 檢查 Google Places API 金鑰是否有效
+            if is_api_key_valid():
+                logger.info(f"開始使用 Google Places API 豐富旅行計劃: {data['destination']}")
+                plan_data = enrich_travel_plan(plan_data)
+                logger.info("Google Places API 豐富旅行計劃完成")
+            else:
+                logger.warning("Google Places API 金鑰無效，將使用原始計劃")
+        except Exception as e:
+            logger.warning(f"豐富旅行計劃時發生錯誤，將使用原始計劃: {str(e)}")
         
         # 確保計劃有user_id (這可能已經在gpt_service.py中設置了，但為確保安全再次設置)
         plan_data['user_id'] = user_id
