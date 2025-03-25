@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', 'Noto Sans TC', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: #f9fafb;
+  color: #111827;
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* 自定義樣式可以在這裡添加 */
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+.btn {
+  @apply px-4 py-2 rounded font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors;
+}
+
+.btn-primary {
+  @apply bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out;
+}
+
+.btn-secondary {
+  @apply bg-white hover:bg-gray-50 text-blue-600 font-medium py-2 px-4 rounded-md border border-gray-300 transition duration-150 ease-in-out;
+}
+
+.form-input {
+  @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700 mb-1;
+}
+
+.card {
+  @apply bg-white rounded-lg shadow-md overflow-hidden;
+}
+
+/* 首頁目的地卡片效果 */
+.destination-card .image-container {
+  @apply relative overflow-hidden;
+  transition: transform 0.3s ease;
+}
+
+.destination-card:hover .image-container {
+  transform: scale(1.05);
+}
