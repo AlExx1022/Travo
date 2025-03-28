@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import BuildPage from './pages/BuildPage';
 import { AuthProvider } from './contexts/AuthContext';
 import './App.css';
 
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/build" element={<BuildPage />} />
           {/* 以後可以添加更多路由 */}
         </Routes>
       </AuthProvider>
