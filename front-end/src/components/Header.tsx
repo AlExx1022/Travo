@@ -97,12 +97,12 @@ const Header = () => {
                       個人資料
                     </Link>
                     <Link
-                      to="/my-trips"
+                      to="/my-travel-plans"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       role="menuitem"
                       onClick={() => setIsDropdownOpen(false)}
                     >
-                      我的旅行
+                      我的旅行計劃
                     </Link>
                     <button
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -196,11 +196,11 @@ const Header = () => {
                     個人資料
                   </Link>
                   <Link
-                    to="/my-trips"
+                    to="/my-travel-plans"
                     className="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    我的旅行
+                    我的旅行計劃
                   </Link>
                   <button
                     className="block w-full text-left px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100"

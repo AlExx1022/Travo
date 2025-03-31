@@ -10,8 +10,8 @@ class Config:
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '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')
     OPENAI_API_URL = os.getenv('OPENAI_API_URL', 'https://api.openai.com/v1/chat/completions')
     
-    # Google Places API設置 (未來使用)
-    GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', '')
+    # Google Places API設置
+    GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', 'AIzaSyCUMU_mO0DJnAXhTlpMXgmVWA2XCQUZfaQ')
     
     # MongoDB設置 (未來使用)
     MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/travel_app')

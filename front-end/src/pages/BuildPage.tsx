@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { zhTW } from 'date-fns/locale';
 import "react-datepicker/dist/react-datepicker.css";
+import travelPlanService from '../services/travelPlanService';
 
 // 註冊中文語言環境
 registerLocale('zh-TW', zhTW);
@@ -365,7 +366,23 @@ const BuildPage = () => {
       return;
     }
 
+    // 提交前再次驗證所有必要字段
+    const validationErrors = [];
+    if (!plan.destination.trim()) validationErrors.push('目的地不能為空');
+    if (!plan.startDate) validationErrors.push('開始日期不能為空');
+    if (!plan.endDate) validationErrors.push('結束日期不能為空');
+    if (new Date(plan.startDate) > new Date(plan.endDate)) validationErrors.push('開始日期不能晚於結束日期');
+    if (!plan.budget) validationErrors.push('預算不能為空');
+    if (plan.interests.length === 0) validationErrors.push('請至少選擇一個興趣');
+    
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join(', '));
+      return;
+    }
+
     setIsSubmitting(true);
+    setError(''); // 清除之前的錯誤信息
+    
     try {
       // 準備符合 API 格式的請求數據
       const requestData = {
@@ -375,54 +392,59 @@ const BuildPage = () => {
         budget: plan.budget,
         interests: plan.interests,
         preference: plan.preference,
-        companions: plan.companions
+        companions: plan.companions,
+        travelers: plan.travelers
       };
 
       console.log('提交旅行計劃:', requestData);
-      console.log('使用 API URL:', API_BASE_URL);
       
-      // 獲取認證令牌
-      const token = localStorage.getItem('travo_auth_token');
-      if (!token) {
-        throw new Error('未找到認證令牌，請重新登入');
+      // 使用服務創建旅行計劃
+      const response = await travelPlanService.createTravelPlan(requestData);
+      
+      console.log('旅行計劃生成成功:', response);
+      
+      // 獲取計劃ID，處理不同的後端API回應格式
+      const planId = response.plan_id || response.id || (response.plan && response.plan.id);
+      
+      if (!planId) {
+        console.error('無法從API響應中獲取計劃ID:', response);
+        throw new Error('從API響應中獲取計劃ID失敗');
       }
-      
-      // 發送API請求
-      const response = await fetch(`${API_BASE_URL}/travel-plans/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(requestData)
-      });
-      
-      console.log('API回應狀態:', response.status);
-      
-      // 處理回應
-      const data = await response.json();
-      console.log('API回應數據:', data);
-      
-      if (!response.ok) {
-        throw new Error(data.message || `請求失敗 (${response.status}): ${response.statusText}`);
-      }
-      
-      if (!data.success) {
-        throw new Error(data.message || '旅行計劃生成失敗');
-      }
-      
-      console.log('旅行計劃生成成功:', data);
       
       // 跳轉到生成的旅行計劃詳情頁
-      navigate(`/travel-plans/${data.plan_id}`);
+      navigate(`/travel-plans/${planId}`);
     } catch (error: any) {
       console.error('提交旅行計劃時出錯:', error);
-      // 顯示更多診斷信息
+      
+      // 顯示更具體的錯誤信息
+      let errorMessage = '提交旅行計劃時出錯，請稍後再試';
+      
       if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-        setError('無法連接到API服務器。請確保後端服務正在運行並可訪問。');
-      } else {
-        setError(error.message || '提交旅行計劃時出錯，請稍後再試');
+        errorMessage = '無法連接到API服務器。請確保網絡連接正常且後端服務可訪問。';
+      } else if (error.message) {
+        // 使用API返回的具體錯誤訊息
+        errorMessage = error.message;
       }
+      
+      // 處理不同類型的錯誤
+      if (error.status === 401 || error.status === 403) {
+        errorMessage = '認證失敗，請重新登入';
+        navigate('/login', { state: { from: '/build' } });
+      } else if (error.status === 429) {
+        errorMessage = '請求過於頻繁，請稍後再試';
+      } else if (error.status >= 500) {
+        errorMessage = '服務器錯誤，請稍後再試';
+      }
+      
+      setError(errorMessage);
+      
+      // 顯示一個友好的錯誤提示，滾動到錯誤信息位置
+      setTimeout(() => {
+        const errorElement = document.getElementById('error-message');
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     } finally {
       setIsSubmitting(false);
     }
@@ -465,6 +487,16 @@ const BuildPage = () => {
       }
       .react-datepicker__triangle {
         display: none;
+      }
+      
+      /* 添加動畫樣式 */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      
+      .animate-fade-in {
+        animation: fadeIn 0.3s ease-out forwards;
       }
     `;
     document.head.appendChild(style);
@@ -818,7 +850,10 @@ const BuildPage = () => {
             {renderStep()}
             
             {error && (
-              <div className="mt-6 flex items-center p-4 rounded-md bg-red-50 text-red-700">
+              <div 
+                id="error-message"
+                className="mt-6 flex items-center p-4 rounded-md bg-red-50 text-red-700 border border-red-200 animate-fade-in"
+              >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                 </svg>

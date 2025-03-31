@@ -6,6 +6,7 @@ import logging
 from typing import List, Dict, Any
 from app.config.config import get_config
 from app.utils.google_places_service import enrich_travel_plan
+import uuid
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -182,15 +183,27 @@ def generate_travel_plan(destination: str, start_date: str, end_date: str,
             # 處理行程
             schedule = day_data.get("schedule", [])
             for item in schedule:
+                # 為每個活動分配唯一的 UUID
+                activity_id = str(uuid.uuid4())
+                
                 activity = {
+                    "id": activity_id,  # 添加唯一ID
                     "time": item.get("time", ""),
                     "name": item.get("name", ""),
                     "location": f"{item.get('name', '')}",
                     "description": "",
                     "lat": item.get("lat", 0),
                     "lng": item.get("lng", 0),
-                    "type": item.get("type", "景點")
+                    "type": item.get("type", "景點"),
+                    "duration_minutes": 60,  # 預設活動時長
+                    "place_id": "",  # 預設空的place_id
+                    "address": "",  # 預設空地址
+                    "photos": []  # 預設空照片列表
                 }
+                
+                # 記錄活動ID的生成
+                logger.info(f"為新活動 '{activity['name']}' 生成UUID: {activity_id}")
+                
                 day["activities"].append(activity)
             
             result["days"].append(day)

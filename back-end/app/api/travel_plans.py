@@ -8,6 +8,7 @@ from app.models.travel_plan import TravelPlan
 from app.api import api_bp
 from app.utils.gpt_service import generate_travel_plan as gpt_generate_travel_plan
 from app.utils.google_places_service import enrich_travel_plan, is_api_key_valid
+import re
 
 # 設置日誌
 logger = logging.getLogger(__name__)
@@ -123,8 +124,13 @@ def get_travel_plan(plan_id):
         'destination': plan['destination'],
         'start_date': plan['start_date'],
         'end_date': plan['end_date'],
+        'budget': plan.get('budget', '0'),  # 確保包含預算欄位
+        'travelers': plan.get('travelers', 1),  # 確保包含人數欄位
         'days': plan['days']
     }
+    
+    # 記錄日誌，確認欄位存在
+    logger.info(f"旅行計劃詳情 - ID: {plan_id}, 預算: {formatted_plan['budget']}, 人數: {formatted_plan['travelers']}")
     
     return jsonify({
         'success': True,
@@ -288,6 +294,7 @@ def generate_travel_plan():
         "start_date": "2023-10-01",
         "end_date": "2023-10-05",
         "budget": "30000",
+        "travelers": 2,
         "interests": ["歷史", "美食", "文化體驗"],
         "preference": "輕鬆",
         "companions": "家庭"
@@ -332,6 +339,13 @@ def generate_travel_plan():
         # 確保計劃有user_id (這可能已經在gpt_service.py中設置了，但為確保安全再次設置)
         plan_data['user_id'] = user_id
         
+        # 確保預算和人數信息存在
+        plan_data['budget'] = data.get('budget', '30000')  # 使用請求中的預算，默認為30000
+        plan_data['travelers'] = data.get('travelers', 1)  # 使用請求中的人數，默認為1人
+        
+        # 記錄將要保存的預算和人數
+        logger.info(f"準備保存旅行計劃 - 目的地: {data['destination']}, 預算: {plan_data['budget']}, 人數: {plan_data['travelers']}")
+        
         # 存儲到數據庫
         plan_id, error = TravelPlan.create_plan(user_id, plan_data)
         if error:
@@ -351,4 +365,456 @@ def generate_travel_plan():
         return jsonify({
             'success': False,
             'message': f'生成計劃時發生錯誤: {str(e)}'
-        }), 500 
+        }), 500
+
+@api_bp.route('/travel-plans/<plan_id>/activities', methods=['POST'])
+@token_required
+def add_activity(plan_id):
+    """添加單一活動到旅行計劃中的指定天數
+    
+    預期的JSON格式:
+    {
+        "day_index": 0,  // 第幾天的索引 (從0開始)
+        "activity": {
+            "name": "活動名稱",
+            "location": "地點",
+            "type": "景點",
+            "time": "09:00",
+            "duration_minutes": 60,
+            "lat": 25.123,
+            "lng": 121.456,
+            "place_id": "google_place_id",
+            "address": "詳細地址",
+            "rating": 4.5,
+            "photos": ["photo_url1", "photo_url2"],
+            "description": "活動描述"
+        }
+    }
+    """
+    user_id = request.user_id
+    data = request.get_json()
+    
+    # 記錄API調用
+    logger.info(f"[POST] /travel-plans/{plan_id}/activities - 用戶: {user_id}")
+    
+    # 檢查必要字段
+    if not data or 'day_index' not in data or 'activity' not in data:
+        logger.error("[add_activity] 缺少必要欄位：day_index 或 activity")
+        return jsonify({
+            'success': False,
+            'message': '缺少必要欄位：day_index 或 activity'
+        }), 400
+    
+    # 獲取旅行計劃
+    plan = TravelPlan.find_by_id(plan_id)
+    if not plan:
+        logger.error(f"[add_activity] 找不到旅行計劃 ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '找不到旅行計劃'
+        }), 404
+    
+    # 檢查權限
+    if str(plan['user_id']) != user_id:
+        logger.warning(f"[add_activity] 用戶 {user_id} 無權修改計劃 {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '無權修改此旅行計劃'
+        }), 403
+    
+    # 獲取活動數據
+    day_index = int(data['day_index'])
+    activity = data['activity']
+    
+    # 驗證日期索引是否有效
+    if day_index < 0 or day_index >= len(plan['days']):
+        logger.error(f"[add_activity] 無效的日期索引: {day_index}，有效範圍: 0-{len(plan['days'])-1}")
+        return jsonify({
+            'success': False,
+            'message': f'無效的日期索引: {day_index}，有效範圍: 0-{len(plan["days"])-1}'
+        }), 400
+    
+    # 確保活動有唯一ID
+    if 'id' not in activity or not activity['id'] or activity['id'] == 'undefined':
+        import uuid
+        activity['id'] = str(uuid.uuid4())
+        logger.info(f"[add_activity] 為新活動生成UUID: {activity['id']}")
+    
+    # 檢查活動ID是否為有效的UUID格式
+    if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', activity['id'], re.I):
+        # 如果不是UUID格式，重新生成一個UUID
+        import uuid
+        original_id = activity['id']
+        activity['id'] = str(uuid.uuid4())
+        logger.info(f"[add_activity] 活動ID不是有效的UUID格式，已將 {original_id} 替換為 {activity['id']}")
+    
+    # 添加活動到指定天數
+    logger.info(f"[add_activity] 添加活動到第 {day_index+1} 天: {activity['name']}, ID: {activity['id']}")
+    plan['days'][day_index]['activities'].append(activity)
+    
+    # 更新旅行計劃
+    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    
+    if not success:
+        logger.error(f"[add_activity] 更新旅行計劃失敗: {error}")
+        return jsonify({
+            'success': False,
+            'message': error
+        }), 400
+    
+    return jsonify({
+        'success': True,
+        'message': '活動添加成功',
+        'activity_id': activity['id']
+    }), 201
+
+@api_bp.route('/travel-plans/<plan_id>/activities/<activity_id>', methods=['PUT'])
+@token_required
+def update_activity(plan_id, activity_id):
+    """更新旅行計劃中的特定活動
+    
+    預期的JSON格式:
+    {
+        "day_index": 0,  // 可選，如果活動需要移到其他天
+        "activity": {
+            "name": "更新的活動名稱",
+            "location": "更新的地點",
+            ...
+        }
+    }
+    """
+    user_id = request.user_id
+    data = request.get_json()
+    
+    # 記錄API調用
+    logger.info(f"[PUT] /travel-plans/{plan_id}/activities/{activity_id} - 用戶: {user_id}")
+    
+    # 檢查必要字段
+    if not data or 'activity' not in data:
+        logger.error("[update_activity] 缺少必要欄位：activity")
+        return jsonify({
+            'success': False,
+            'message': '缺少必要欄位：activity'
+        }), 400
+    
+    # 獲取旅行計劃
+    plan = TravelPlan.find_by_id(plan_id)
+    if not plan:
+        logger.error(f"[update_activity] 找不到旅行計劃 ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '找不到旅行計劃'
+        }), 404
+    
+    # 檢查權限
+    if str(plan['user_id']) != user_id:
+        logger.warning(f"[update_activity] 用戶 {user_id} 無權修改計劃 {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '無權修改此旅行計劃'
+        }), 403
+    
+    # 尋找活動
+    activity_found = False
+    source_day_index = None
+    source_activity_index = None
+    
+    # 檢查是否是索引格式 (idx-X-Y)
+    index_match = re.match(r'idx-(\d+)-(\d+)', activity_id)
+    if index_match:
+        day_idx = int(index_match.group(1))
+        act_idx = int(index_match.group(2))
+        
+        logger.info(f"[update_activity] 檢測到索引格式: 天數索引={day_idx}, 活動索引={act_idx}")
+        
+        # 檢查索引是否有效
+        if 0 <= day_idx < len(plan['days']):
+            if plan['days'][day_idx].get('activities') and 0 <= act_idx < len(plan['days'][day_idx]['activities']):
+                activity_found = True
+                source_day_index = day_idx
+                source_activity_index = act_idx
+                logger.info(f"[update_activity] 通過索引找到活動: 天數索引={day_idx}, 活動索引={act_idx}")
+            else:
+                logger.warning(f"[update_activity] 在第 {day_idx+1} 天中找不到索引為 {act_idx} 的活動")
+        else:
+            logger.warning(f"[update_activity] 無效的天數索引: {day_idx}, 有效範圍: 0-{len(plan['days'])-1}")
+    else:
+        # 在所有天數中查找指定活動
+        for day_i, day in enumerate(plan['days']):
+            if not activity_found and day.get('activities'): 
+                for act_i, act in enumerate(day['activities']):
+                    if act.get('id') == activity_id:
+                        activity_found = True
+                        source_day_index = day_i
+                        source_activity_index = act_i
+                        logger.info(f"[update_activity] 通過ID找到活動: ID={activity_id}, 天數索引={day_i}, 活動索引={act_i}")
+                        break
+    
+    if not activity_found:
+        logger.warning(f"[update_activity] 找不到ID為 {activity_id} 的活動")
+        return jsonify({
+            'success': False,
+            'message': f'找不到ID為 {activity_id} 的活動'
+        }), 404
+    
+    # 獲取更新後的活動數據
+    updated_activity = data['activity']
+    
+    # 確保保留原活動ID
+    if not 'id' in updated_activity or not updated_activity['id'] or updated_activity['id'] == 'undefined':
+        import uuid
+        updated_activity['id'] = str(uuid.uuid4())
+        logger.info(f"[update_activity] 為更新的活動生成新UUID: {updated_activity['id']}")
+    elif updated_activity.get('id') != activity_id:
+        logger.warning(f"[update_activity] 活動ID不一致，使用原ID: {activity_id}，而非: {updated_activity.get('id')}")
+        updated_activity['id'] = activity_id
+    
+    # 檢查是否需要移動到其他天
+    target_day_index = data.get('day_index', source_day_index)
+    
+    # 驗證目標日期索引是否有效
+    if target_day_index < 0 or target_day_index >= len(plan['days']):
+        logger.error(f"[update_activity] 無效的目標日期索引: {target_day_index}，有效範圍: 0-{len(plan['days'])-1}")
+        return jsonify({
+            'success': False,
+            'message': f'無效的目標日期索引: {target_day_index}，有效範圍: 0-{len(plan["days"])-1}'
+        }), 400
+    
+    # 如果需要移動到其他天
+    if target_day_index != source_day_index:
+        # 從原天數中移除活動
+        removed_activity = plan['days'][source_day_index]['activities'].pop(source_activity_index)
+        # 添加到目標天數
+        plan['days'][target_day_index]['activities'].append(updated_activity)
+        logger.info(f"[update_activity] 活動 {updated_activity['id']} 從第 {source_day_index+1} 天移動到第 {target_day_index+1} 天")
+    else:
+        # 在原天數中更新活動
+        plan['days'][source_day_index]['activities'][source_activity_index] = updated_activity
+        logger.info(f"[update_activity] 在第 {source_day_index+1} 天更新活動 {updated_activity['id']}")
+    
+    # 更新旅行計劃
+    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    
+    if not success:
+        logger.error(f"[update_activity] 更新旅行計劃失敗: {error}")
+        return jsonify({
+            'success': False,
+            'message': error
+        }), 400
+    
+    logger.info(f"[update_activity] 成功更新活動 {updated_activity['id']}")
+    return jsonify({
+        'success': True,
+        'message': '活動更新成功',
+        'activity': updated_activity
+    }), 200
+
+@api_bp.route('/travel-plans/<plan_id>/activities/<activity_id>', methods=['DELETE'])
+@token_required
+def delete_activity(plan_id, activity_id):
+    """從旅行計劃中刪除特定活動
+    
+    活動可以通過ID、名稱或位置索引來識別:
+    - 如果activity_id是一個UUID，嘗試按ID匹配
+    - 如果不是UUID，嘗試按活動名稱匹配
+    - 如果格式為'idx-X-Y'（X是天數索引，Y是活動索引），則按位置刪除
+    """
+    user_id = request.user_id
+    
+    # 記錄API調用
+    logger.info(f"[DELETE] /travel-plans/{plan_id}/activities/{activity_id} - 用戶: {user_id}")
+    
+    # 檢查參數有效性
+    if not activity_id or activity_id == 'undefined':
+        logger.error(f"[delete_activity] 請求刪除活動時提供了無效的活動ID: {activity_id}")
+        return jsonify({
+            'success': False,
+            'message': '無效的活動ID'
+        }), 400
+    
+    # 檢查計劃ID有效性
+    if not plan_id or plan_id == 'undefined':
+        logger.error(f"[delete_activity] 請求刪除活動時提供了無效的計劃ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '無效的計劃ID'
+        }), 400
+    
+    # 獲取旅行計劃
+    plan = TravelPlan.find_by_id(plan_id)
+    if not plan:
+        logger.error(f"[delete_activity] 找不到旅行計劃 ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '找不到旅行計劃'
+        }), 404
+    
+    # 檢查權限
+    if str(plan['user_id']) != user_id:
+        logger.warning(f"[delete_activity] 用戶 {user_id} 無權修改計劃 {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '無權修改此旅行計劃'
+        }), 403
+    
+    # 尋找活動
+    activity_found = False
+    deleted_activity = None
+    activity_day_index = None
+    activity_index = None
+    
+    # 檢查是否是索引格式 (idx-X-Y)
+    index_match = re.match(r'idx-(\d+)-(\d+)', activity_id)
+    if index_match:
+        day_idx = int(index_match.group(1))
+        act_idx = int(index_match.group(2))
+        
+        logger.info(f"[delete_activity] 檢測到索引格式: 天數索引={day_idx}, 活動索引={act_idx}")
+        
+        # 檢查索引是否有效
+        if 0 <= day_idx < len(plan['days']):
+            if plan['days'][day_idx].get('activities') and 0 <= act_idx < len(plan['days'][day_idx]['activities']):
+                # 通過索引刪除
+                deleted_activity = plan['days'][day_idx]['activities'].pop(act_idx)
+                activity_found = True
+                activity_day_index = day_idx
+                activity_index = act_idx
+                logger.info(f"[delete_activity] 已從第 {day_idx+1} 天刪除索引為 {act_idx} 的活動")
+            else:
+                logger.warning(f"[delete_activity] 在第 {day_idx+1} 天中找不到索引為 {act_idx} 的活動")
+        else:
+            logger.warning(f"[delete_activity] 無效的天數索引: {day_idx}, 有效範圍: 0-{len(plan['days'])-1}")
+    else:
+        # 檢查是否為UUID格式
+        is_uuid_format = re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', activity_id, re.I)
+        if is_uuid_format:
+            logger.info(f"[delete_activity] 檢測到UUID格式的活動ID: {activity_id}")
+        else:
+            logger.info(f"[delete_activity] 非UUID格式的活動ID: {activity_id}，將嘗試按名稱匹配")
+        
+        # 嘗試依據ID或名稱查找活動
+        for day_i, day in enumerate(plan['days']):
+            if not activity_found and day.get('activities'):
+                for act_i, act in enumerate(day['activities']):
+                    # 檢查ID
+                    if act.get('id') == activity_id:
+                        deleted_activity = plan['days'][day_i]['activities'].pop(act_i)
+                        activity_found = True
+                        activity_day_index = day_i
+                        activity_index = act_i
+                        logger.info(f"[delete_activity] 已從第 {day_i+1} 天刪除ID為 {activity_id} 的活動")
+                        break
+                    # 如果沒有ID匹配，嘗試按名稱匹配
+                    elif not is_uuid_format and act.get('name') == activity_id:
+                        deleted_activity = plan['days'][day_i]['activities'].pop(act_i)
+                        activity_found = True
+                        activity_day_index = day_i
+                        activity_index = act_i
+                        logger.info(f"[delete_activity] 已從第 {day_i+1} 天刪除名稱為 '{activity_id}' 的活動")
+                        break
+    
+    if not activity_found:
+        logger.warning(f"[delete_activity] 找不到ID為 {activity_id} 的活動，無法刪除")
+        return jsonify({
+            'success': False,
+            'message': f'找不到ID為 {activity_id} 的活動'
+        }), 404
+    
+    # 更新旅行計劃
+    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    
+    if not success:
+        logger.error(f"[delete_activity] 更新旅行計劃時發生錯誤: {error}")
+        # 如果更新失敗，但我們確實找到並刪除了活動，這是一個奇怪的情況
+        # 可能需要考慮回滾刪除操作
+        return jsonify({
+            'success': False,
+            'message': error
+        }), 400
+    
+    # 返回被刪除的活動信息，以便前端確認
+    response_data = {
+        'success': True,
+        'message': '活動刪除成功'
+    }
+    
+    # 添加被刪除的活動信息
+    if deleted_activity:
+        response_data['deleted_activity'] = {
+            'id': deleted_activity.get('id', ''),
+            'name': deleted_activity.get('name', '未命名活動'),
+            'day_index': activity_day_index,
+            'activity_index': activity_index
+        }
+    
+    logger.info(f"[delete_activity] 成功刪除活動並更新旅行計劃")
+    return jsonify(response_data), 200
+
+# 添加新的API路由，支持基於索引的活動刪除
+@api_bp.route('/travel-plans/<plan_id>/days/<int:day_index>/activities/<int:activity_index>', methods=['DELETE'])
+@token_required
+def delete_activity_by_index(plan_id, day_index, activity_index):
+    """基於天數索引和活動索引刪除活動
+    
+    允許直接使用索引位置刪除活動，無需知道活動ID
+    """
+    user_id = request.user_id
+    
+    # 記錄索引刪除請求
+    logger.info(f"收到基於索引的活動刪除請求: 計劃ID={plan_id}, 天數索引={day_index}, 活動索引={activity_index}")
+    
+    # 獲取旅行計劃
+    plan = TravelPlan.find_by_id(plan_id)
+    if not plan:
+        logger.error(f"找不到旅行計劃 ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '找不到旅行計劃'
+        }), 404
+    
+    # 檢查權限
+    if str(plan['user_id']) != user_id:
+        logger.warning(f"用戶 {user_id} 無權刪除計劃 {plan_id} 中的活動")
+        return jsonify({
+            'success': False,
+            'message': '無權修改此旅行計劃'
+        }), 403
+    
+    # 檢查索引是否有效
+    if day_index < 0 or day_index >= len(plan['days']):
+        logger.error(f"無效的天數索引: {day_index}, 有效範圍為 0-{len(plan['days'])-1}")
+        return jsonify({
+            'success': False,
+            'message': f'無效的天數索引: {day_index}, 有效範圍為 0-{len(plan["days"])-1}'
+        }), 400
+    
+    # 檢查活動索引是否有效
+    if 'activities' not in plan['days'][day_index]:
+        plan['days'][day_index]['activities'] = []
+    
+    if activity_index < 0 or activity_index >= len(plan['days'][day_index]['activities']):
+        logger.error(f"無效的活動索引: {activity_index}, 有效範圍為 0-{len(plan['days'][day_index]['activities'])-1}")
+        return jsonify({
+            'success': False,
+            'message': f'無效的活動索引: {activity_index}, 有效範圍為 0-{len(plan["days"][day_index]["activities"])-1}'
+        }), 400
+    
+    # 刪除指定索引的活動
+    deleted_activity = plan['days'][day_index]['activities'].pop(activity_index)
+    logger.info(f"已從計劃 {plan_id} 的第 {day_index+1} 天刪除索引為 {activity_index} 的活動")
+    
+    # 更新旅行計劃
+    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    
+    if not success:
+        logger.error(f"更新旅行計劃失敗: {error}")
+        return jsonify({
+            'success': False,
+            'message': error
+        }), 400
+    
+    return jsonify({
+        'success': True,
+        'message': f'活動已成功刪除',
+        'deleted_activity': deleted_activity
+    }), 200 
