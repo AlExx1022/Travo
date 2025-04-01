@@ -82,6 +82,8 @@ const TravelPlanPage: React.FC = () => {
   const [shareUrl, setShareUrl] = useState<string>('');
   const [showShareNotification, setShowShareNotification] = useState<boolean>(false);
   const [locallyDeletedActivities, setLocallyDeletedActivities] = useState<string[]>([]);
+  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
+  const [editedTitle, setEditedTitle] = useState<string>('');
   
   // 本地刪除記錄的 localStorage 鍵名
   const getLocalStorageKey = (pid: string) => `travo_deleted_activities_${pid}`;
@@ -503,7 +505,7 @@ const TravelPlanPage: React.FC = () => {
     try {
       setIsDeleting(true);
       await travelPlanService.deleteTravelPlan(planId);
-      navigate('/');
+      navigate('/my-travel-plans');
     } catch (error: any) {
       console.error('刪除旅行計劃時出錯:', error);
       setError(error.message || '刪除旅行計劃時出錯，請稍後再試');
@@ -774,6 +776,50 @@ const TravelPlanPage: React.FC = () => {
     }
   };
   
+  // 啟動標題編輯
+  const handleTitleEdit = () => {
+    setEditedTitle(travelPlan?.title || '');
+    setIsEditingTitle(true);
+  };
+  
+  // 保存編輯的標題
+  const handleTitleSave = async () => {
+    if (!travelPlan || !planId || editedTitle === travelPlan.title) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    if (!editedTitle.trim()) {
+      toast.error('標題不能為空');
+      return;
+    }
+
+    const saveToast = toast.loading('儲存中...');
+    
+    try {
+      // 創建更新的計劃數據，只包含需要更新的欄位
+      const updateData = {
+        title: editedTitle.trim()
+      };
+
+      // 調用更新API
+      await travelPlanService.updateTravelPlan(planId, updateData);
+      
+      // 更新本地狀態
+      setTravelPlan({
+        ...travelPlan,
+        title: editedTitle.trim()
+      });
+      
+      toast.success('標題已更新', { id: saveToast });
+    } catch (error) {
+      console.error('更新標題時出錯:', error);
+      toast.error(`儲存失敗: ${error instanceof Error ? error.message : '未知錯誤'}`, { id: saveToast });
+    } finally {
+      setIsEditingTitle(false);
+    }
+  };
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -863,7 +909,41 @@ const TravelPlanPage: React.FC = () => {
             {/* 旅行計劃標題區域 */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6 relative">
               <div className="flex flex-wrap justify-between items-start mb-4">
-                <h1 className="text-2xl font-bold text-gray-900">{travelPlan?.title}</h1>
+                {isEditingTitle ? (
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleTitleSave();
+                    }}
+                    className="flex flex-col gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      autoFocus
+                      className="text-2xl font-bold text-gray-900 border-b-2 border-blue-500 outline-none bg-transparent w-full"
+                      onBlur={handleTitleSave}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setIsEditingTitle(false);
+                          setEditedTitle(travelPlan?.title || '');
+                        }
+                      }}
+                    />
+                    <div className="text-xs text-gray-500">按 Enter 儲存或 Esc 取消</div>
+                  </form>
+                ) : (
+                  <h1 
+                    className="text-2xl font-bold text-gray-900 cursor-pointer hover:text-blue-600 group"
+                    onClick={handleTitleEdit}
+                  >
+                    {travelPlan?.title}
+                    <span className="ml-2 invisible group-hover:visible text-sm text-blue-500">
+                      <i className="fas fa-pencil-alt"></i>
+                    </span>
+                  </h1>
+                )}
                 <div className="flex space-x-2 mt-2 sm:mt-0"></div>
               </div>
               
