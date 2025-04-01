@@ -623,22 +623,84 @@ class TravelPlanService {
    * 從旅行計劃中刪除特定活動
    * @param planId 旅行計劃ID
    * @param activityId 要刪除的活動ID或索引標識符（格式：idx-dayIndex-activityIndex）
-   * @returns 操作結果
+   * @returns 操作結果，包含成功標誌、消息和其他元數據
    */
-  async deleteActivity(planId: string, activityId: string) {
+  async deleteActivity(planId: string, activityId: string): Promise<{
+    success: boolean;
+    message: string;
+    error?: string;
+    data?: any;
+    db_verification?: boolean;
+    localOnly?: boolean;
+    serverError?: boolean;
+    clientError?: boolean;
+  }> {
     try {
       console.log(`[deleteActivity] 開始從旅行計劃 ${planId} 刪除活動 ${activityId}`);
       
-      // 參數驗證
-      if (!planId || planId === 'undefined') {
-        console.error('[deleteActivity] 刪除活動時提供了無效的計劃ID:', planId);
-        throw new Error('無效的旅行計劃ID');
+      // 嘗試從URL或本地緩存中獲取計劃ID
+      if (!planId || planId === 'undefined' || planId === 'null') {
+        const url = window.location.pathname;
+        const planIdMatch = url.match(/\/travel-plans\/([a-zA-Z0-9]+)/);
+        const urlPlanId = planIdMatch ? planIdMatch[1] : null;
+        console.log(`[deleteActivity] URL解析結果：${urlPlanId}`);
+        
+        // 檢查URL中是否有計劃ID
+        if (urlPlanId && urlPlanId !== 'undefined' && urlPlanId !== 'null') {
+          console.log(`[deleteActivity] 從URL成功獲取計劃ID: ${urlPlanId}`);
+          planId = urlPlanId;
+        } else {
+          // 嘗試從本地存儲中恢復計劃ID
+          const lastPlanId = localStorage.getItem('travo_last_plan_id');
+          if (lastPlanId && lastPlanId !== 'undefined' && lastPlanId !== 'null') {
+            console.log(`[deleteActivity] 從本地存儲恢復計劃ID: ${lastPlanId}`);
+            planId = lastPlanId;
+          }
+        }
       }
       
-      if (!activityId || activityId === 'undefined') {
-        console.error('[deleteActivity] 刪除活動時提供了無效的活動ID:', activityId);
-        throw new Error('無效的活動ID');
+      // 仍然沒有有效的計劃ID，只能進行本地刪除
+      if (!planId || planId === 'undefined' || planId === 'null') {
+        console.error('[deleteActivity] 刪除活動時提供了無效的計劃ID，無法與伺服器同步:', planId);
+        
+        // 嘗試只在本地執行刪除操作
+        if (activityId && activityId !== 'undefined' && activityId !== 'null') {
+          // 本地刪除邏輯 - 將活動ID添加到本地存儲的已刪除列表中
+          try {
+            this.saveLocalDeletion(activityId);
+            return { 
+              success: true, 
+              message: '活動已在本地刪除，但無法與伺服器同步',
+              localOnly: true,
+              clientError: true,
+              error: '無效的旅行計劃ID'
+            };
+          } catch (localError) {
+            console.error('[deleteActivity] 本地刪除失敗:', localError);
+          }
+        }
+        
+        return { 
+          success: false, 
+          message: '無法刪除活動：提供了無效的計劃ID', 
+          error: '無效的旅行計劃ID',
+          clientError: true
+        };
       }
+      
+      // 參數驗證 - 確保 activityId 存在且不是 'undefined' 字符串
+      if (!activityId || activityId === 'undefined' || activityId === 'null') {
+        console.error('[deleteActivity] 刪除活動時提供了無效的活動ID:', activityId);
+        return { 
+          success: false, 
+          message: '無法刪除活動：提供了無效的活動ID', 
+          error: '無效的活動ID',
+          clientError: true
+        };
+      }
+      
+      // 保存當前使用的計劃ID到本地存儲中
+      localStorage.setItem('travo_last_plan_id', planId);
       
       // 檢查活動ID是否為索引格式
       const indexMatch = activityId.match(/^idx-(\d+)-(\d+)$/);
@@ -665,109 +727,234 @@ class TravelPlanService {
       
       const token = localStorage.getItem('travo_auth_token');
       if (!token) {
-        console.warn('[deleteActivity] 未找到認證令牌，無法刪除活動');
-        throw new Error('未找到認證令牌，請重新登入');
+        console.error('[deleteActivity] 未找到認證令牌，無法刪除活動');
+        
+        // 嘗試本地刪除
+        this.saveLocalDeletion(activityId);
+        
+        return { 
+          success: false, 
+          message: '未找到認證令牌，請重新登入', 
+          error: '未找到認證令牌',
+          clientError: true,
+          localOnly: true
+        };
       }
 
-      console.log(`[deleteActivity] 正在發送API請求刪除活動，完整 URL:`, apiUrl);
+      console.log(`[deleteActivity] 正在發送API請求刪除活動，完整 URL: ${apiUrl}`);
       
       try {
-        const response = await fetch(apiUrl, {
+        // 嘗試調用 API 刪除活動
+        const response = await this.fetchWithRetry(apiUrl, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           },
-          mode: 'cors',
-          credentials: 'same-origin'
         });
         
-        console.log('[deleteActivity] API回應狀態:', response.status, response.statusText);
+        const data = await response.json();
+        console.log(`[deleteActivity] API 回應:`, data);
         
-        // 嘗試解析響應數據
-        let data;
-        try {
-          const text = await response.text();
-          // 檢查回應是否為空
-          if (text.trim()) {
-            data = JSON.parse(text);
-            console.log('[deleteActivity] API回應數據:', data);
-          } else {
-            console.warn('[deleteActivity] API回應為空');
-            data = { success: true, message: '活動已刪除', emptyResponse: true };
-          }
-        } catch (parseError) {
-          console.error('[deleteActivity] 解析API回應數據失敗:', parseError);
-          data = { success: false, message: '無法解析API回應' };
-        }
-        
-        if (!response.ok) {
-          console.error('[deleteActivity] API請求不成功:', response.status, response.statusText);
-          console.error('[deleteActivity] API錯誤詳情:', data);
-          
-          // 特殊處理404錯誤
-          if (response.status === 404) {
-            console.warn(`[deleteActivity] 活動 ${activityId} 在伺服器上不存在，但我們將視為刪除成功`);
-            
-            // 返回成功，但標記為僅本地刪除
-            return { 
-              success: true, 
-              message: '活動在本地已刪除，但伺服器上未找到匹配的活動', 
-              localOnly: true,
-              serverMessage: data?.message || '找不到活動'
-            };
-          }
-          
-          throw new Error(data?.message || `請求失敗 (${response.status}): ${response.statusText}`);
-        }
-        
-        console.log(`[deleteActivity] 成功刪除活動 ${activityId}`);
-        return data;
-      } catch (networkError: any) {
-        // 檢查網絡錯誤是否是由於資源不存在（404）
-        if (networkError.status === 404 || 
-            (networkError.message && (
-              networkError.message.includes('404') ||
-              networkError.message.includes('Not Found') ||
-              networkError.message.includes('找不到ID為')
-            ))) {
-          
-          console.warn(`[deleteActivity] 活動 ${activityId} 在伺服器上不存在，將視為刪除成功`);
-          return { 
-            success: true, 
-            message: '活動在本地已刪除，伺服器上可能不存在此活動', 
-            localOnly: true,
-            error: networkError.message
+        // 特別處理權限錯誤
+        if (data.error_code === 'permission_denied') {
+          console.error(`[deleteActivity] 刪除活動權限錯誤: ${data.message}`);
+          return {
+            success: false,
+            message: '您沒有權限刪除此活動。請確認您是此旅行計劃的擁有者，或重新登入後再試。',
+            error: data.message,
+            clientError: true,
+            db_verification: false
           };
         }
         
-        // 其他網絡錯誤
-        console.error(`[deleteActivity] 刪除活動的網絡請求出錯:`, networkError);
-        console.error('[deleteActivity] 錯誤類型:', networkError.name);
-        console.error('[deleteActivity] 錯誤訊息:', networkError.message);
+        // 正常回應
+        if (data.success) {
+          // 從本地緩存中移除此計劃
+          this.clearCachedPlan(planId);
+          
+          // 記錄成功結果
+          console.log(`[deleteActivity] 活動刪除成功，db_verification=${data.db_verification}`);
+          
+          // 檢查是否真的從數據庫刪除了
+          if (data.db_verification === false) {
+            console.warn('[deleteActivity] 警告: 活動可能未成功從數據庫中刪除');
+            this.saveLocalDeletion(activityId);
+            return {
+              success: true,
+              message: '活動已從界面移除，但在數據庫更新時遇到問題。已設置為在本地隱藏此活動。',
+              db_verification: false,
+              data: data.deleted_activity
+            };
+          }
+          
+          return {
+            success: true,
+            message: '活動刪除成功',
+            db_verification: true,
+            data: data.deleted_activity
+          };
+        } else {
+          console.error(`[deleteActivity] 刪除活動失敗: ${data.message}`);
+          
+          // 判斷是客戶端錯誤還是服務器錯誤
+          const isClientError = response.status >= 400 && response.status < 500;
+          
+          return {
+            success: false,
+            message: data.message || '刪除活動失敗',
+            error: data.error || '未知錯誤',
+            clientError: isClientError,
+            serverError: !isClientError
+          };
+        }
+      } catch (apiError: any) {
+        // 網絡錯誤處理
+        console.error(`[deleteActivity] 刪除活動的網絡請求出錯:`, apiError);
+        console.error('[deleteActivity] 錯誤類型:', apiError.name);
+        console.error('[deleteActivity] 錯誤訊息:', apiError.message);
         
-        // 嘗試也將其視為成功，但加入警告
-        // 這樣前端可以繼續正常運行，同時記錄到控制台
+        // 網絡錯誤情況下，嘗試本地刪除
+        this.saveLocalDeletion(activityId);
+        
         return { 
           success: true, 
-          message: '活動已在本地刪除，但在伺服器操作可能失敗', 
-          localOnly: true,
+          message: '刪除活動時發生網絡錯誤，但已在本地標記為已刪除', 
+          error: apiError.message,
           serverError: true,
-          error: networkError.message
+          localOnly: true
         };
       }
     } catch (error: any) {
       console.error(`[deleteActivity] 刪除活動時出錯:`, error);
       
-      // 將所有錯誤視為本地成功，讓前端可以繼續工作
+      // 出現任何未捕獲的錯誤，嘗試本地刪除
+      if (activityId) {
+        this.saveLocalDeletion(activityId);
+      }
+      
       return { 
         success: true, 
-        message: '活動已在本地刪除，但無法與伺服器同步', 
-        localOnly: true,
-        clientError: true,
-        error: error.message
+        message: '刪除活動失敗，但已在本地標記為已刪除', 
+        error: error.message,
+        serverError: true,
+        localOnly: true
       };
+    }
+  }
+  
+  /**
+   * 將活動ID保存到本地存儲，標記為已刪除
+   * @param activityId 活動ID
+   */
+  private saveLocalDeletion(activityId: string): void {
+    if (!activityId) return;
+    
+    try {
+      // 獲取當前已刪除的活動列表
+      const key = 'travo_deleted_activities';
+      const storedData = localStorage.getItem(key);
+      let deletedIds: string[] = [];
+      
+      if (storedData) {
+        try {
+          const parsedData = JSON.parse(storedData);
+          if (Array.isArray(parsedData)) {
+            deletedIds = parsedData;
+          }
+        } catch (e) {
+          console.error('解析本地刪除記錄失敗:', e);
+        }
+      }
+      
+      // 如果活動ID已經在列表中，不重複添加
+      if (!deletedIds.includes(activityId)) {
+        deletedIds.push(activityId);
+        localStorage.setItem(key, JSON.stringify(deletedIds));
+        console.log(`已將活動 ${activityId} 添加到本地刪除記錄`);
+      }
+    } catch (e) {
+      console.error('保存本地刪除記錄失敗:', e);
+    }
+  }
+
+  /**
+   * 強制刷新並重新載入旅行計劃數據
+   * 當活動刪除可能不一致時使用
+   * @param planId 旅行計劃ID
+   * @returns 刷新後的旅行計劃數據
+   */
+  async forceRefreshTravelPlan(planId: string) {
+    try {
+      console.log(`[forceRefreshTravelPlan] 強制刷新旅行計劃 ${planId}`);
+      
+      if (!planId || planId === 'undefined' || planId === 'null') {
+        console.error('[forceRefreshTravelPlan] 提供了無效的計劃ID:', planId);
+        throw new Error('無效的旅行計劃ID');
+      }
+      
+      const token = localStorage.getItem('travo_auth_token');
+      if (!token) {
+        console.warn('[forceRefreshTravelPlan] 未找到認證令牌');
+        throw new Error('未找到認證令牌，請重新登入');
+      }
+      
+      // 移除任何本地緩存
+      this.clearCachedPlan(planId);
+      
+      // 執行強制刷新請求
+      const apiUrl = `${API_BASE_URL}/travel-plans/${planId}?force_refresh=true&_t=${Date.now()}`;
+      console.log(`[forceRefreshTravelPlan] 發送GET請求到: ${apiUrl}`);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store'
+        },
+        cache: 'no-store'
+      });
+      
+      console.log('[forceRefreshTravelPlan] API回應狀態:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`請求失敗 (${response.status}): ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[forceRefreshTravelPlan] 獲取到的旅行計劃數據:', data);
+      
+      return data;
+    } catch (error: any) {
+      console.error('[forceRefreshTravelPlan] 強制刷新旅行計劃失敗:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * 清除本地緩存的旅行計劃
+   * @param planId 旅行計劃ID
+   */
+  clearCachedPlan(planId: string) {
+    if (!planId) return;
+    
+    try {
+      // 清除與此計劃相關的所有本地存儲
+      const cacheKeys = [
+        `travo_plan_${planId}`,
+        `travo_deleted_activities_${planId}`
+      ];
+      
+      for (const key of cacheKeys) {
+        if (localStorage.getItem(key)) {
+          console.log(`[clearCachedPlan] 移除本地存儲項目: ${key}`);
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (error) {
+      console.error('[clearCachedPlan] 清除本地緩存時出錯:', error);
     }
   }
 

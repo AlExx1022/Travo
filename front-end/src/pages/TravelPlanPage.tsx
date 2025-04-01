@@ -51,6 +51,24 @@ interface Activity {
   description: string;
 }
 
+// 定義本地刪除紀錄
+interface LocalDeletionRecord {
+  planId: string;
+  deletedActivityIds: string[];
+  timestamp: number;
+}
+
+// 定義API結果類型
+interface ApiResult {
+  success: boolean;
+  message: string;
+  error?: any;
+  data?: any;
+  db_verification?: boolean;  // 資料庫驗證結果
+  localOnly?: boolean;        // 是否僅本地操作
+  serverError?: boolean;      // 是否伺服器錯誤
+}
+
 const TravelPlanPage: React.FC = () => {
   const { planId } = useParams<{ planId: string }>();
   const navigate = useNavigate();
@@ -63,17 +81,128 @@ const TravelPlanPage: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [shareUrl, setShareUrl] = useState<string>('');
   const [showShareNotification, setShowShareNotification] = useState<boolean>(false);
+  const [locallyDeletedActivities, setLocallyDeletedActivities] = useState<string[]>([]);
+  
+  // 本地刪除記錄的 localStorage 鍵名
+  const getLocalStorageKey = (pid: string) => `travo_deleted_activities_${pid}`;
+  
+  // 從 localStorage 讀取本地刪除記錄
+  const loadLocalDeletions = (pid: string): string[] => {
+    if (!pid) return [];
+    
+    try {
+      // 讀取特定計劃的刪除記錄
+      const planSpecificKey = getLocalStorageKey(pid);
+      const planSpecificData = localStorage.getItem(planSpecificKey);
+      let planSpecificIds: string[] = [];
+      
+      if (planSpecificData) {
+        try {
+          const parsedData: LocalDeletionRecord = JSON.parse(planSpecificData);
+          // 檢查記錄是否超過 24 小時 (86400000 毫秒)
+          if (Date.now() - parsedData.timestamp > 86400000) {
+            console.log('特定計劃的本地刪除記錄已過期，清除記錄');
+            localStorage.removeItem(planSpecificKey);
+          } else {
+            planSpecificIds = parsedData.deletedActivityIds;
+            console.log(`讀取到特定計劃 ${pid} 的本地刪除記錄:`, planSpecificIds);
+          }
+        } catch (parseError) {
+          console.error('解析特定計劃的本地刪除記錄時出錯:', parseError);
+        }
+      }
+      
+      // 讀取全局刪除記錄
+      const globalKey = 'travo_deleted_activities';
+      const globalData = localStorage.getItem(globalKey);
+      let globalIds: string[] = [];
+      
+      if (globalData) {
+        try {
+          const parsedData = JSON.parse(globalData);
+          if (Array.isArray(parsedData)) {
+            globalIds = parsedData;
+            console.log('讀取到全局本地刪除記錄:', globalIds);
+          }
+        } catch (parseError) {
+          console.error('解析全局本地刪除記錄時出錯:', parseError);
+        }
+      }
+      
+      // 合併兩個列表，確保沒有重複
+      const combinedIds = [...new Set([...planSpecificIds, ...globalIds])];
+      console.log(`為計劃 ${pid} 加載了 ${combinedIds.length} 個本地刪除記錄`);
+      
+      return combinedIds;
+    } catch (error) {
+      console.error('讀取本地刪除記錄時出錯:', error);
+      return [];
+    }
+  };
+  
+  // 將刪除的活動ID保存到 localStorage
+  const saveLocalDeletion = (pid: string, activityId: string) => {
+    if (!pid || !activityId) return;
+    
+    try {
+      const key = getLocalStorageKey(pid);
+      const currentIds = loadLocalDeletions(pid);
+      
+      // 如果ID已經存在，不重複添加
+      if (currentIds.includes(activityId)) return;
+      
+      // 添加新ID並保存
+      const updatedIds = [...currentIds, activityId];
+      const record: LocalDeletionRecord = {
+        planId: pid,
+        deletedActivityIds: updatedIds,
+        timestamp: Date.now()
+      };
+      
+      localStorage.setItem(key, JSON.stringify(record));
+      console.log(`已將活動 ${activityId} 添加到本地刪除記錄`);
+      
+      // 更新狀態
+      setLocallyDeletedActivities(updatedIds);
+    } catch (error) {
+      console.error('保存本地刪除記錄時出錯:', error);
+    }
+  };
+  
+  // 應用本地刪除到旅行計劃
+  const applyLocalDeletions = (plan: TravelPlan, deletedIds: string[]): TravelPlan => {
+    if (!plan || !deletedIds.length) return plan;
+    
+    console.log('應用本地刪除記錄到旅行計劃:', deletedIds);
+    
+    // 創建一個新的旅行計劃副本，過濾掉已刪除的活動
+    const updatedPlan = {
+      ...plan,
+      days: plan.days.map(day => ({
+        ...day,
+        activities: day.activities.filter(activity => !deletedIds.includes(activity.id))
+      }))
+    };
+    
+    return updatedPlan;
+  };
   
   // 從API獲取旅行計劃數據
   const loadTravelPlan = async (id: string) => {
-    if (!id) {
-      setError('未提供旅行計劃ID');
+    if (!id || id === 'undefined' || id === 'null') {
+      console.error('嘗試加載旅行計劃時提供了無效的計劃ID:', id);
+      setError('未提供有效的旅行計劃ID');
       setLoading(false);
       return;
     }
     
     try {
       console.log(`正在獲取旅行計劃數據，Plan ID: ${id}`);
+      
+      // 首先加載本地刪除記錄
+      const deletedIds = loadLocalDeletions(id);
+      setLocallyDeletedActivities(deletedIds);
+      console.log(`為計劃 ${id} 加載了 ${deletedIds.length} 個本地刪除記錄`);
       
       // 使用服務獲取旅行計劃詳情
       const data = await travelPlanService.getTravelPlanById(id);
@@ -82,6 +211,12 @@ const TravelPlanPage: React.FC = () => {
       // 更嚴格地檢查API回傳的數據結構
       const planData = data.plan || data;
       console.log('提取的旅行計劃數據:', planData);
+      
+      // 確保計劃ID存在
+      if (!planData.id && planId) {
+        console.log('API返回的數據缺少ID，使用URL中的計劃ID:', planId);
+        planData.id = planId;
+      }
       
       // 檢查API回傳的數據是否有計劃名稱
       if (!planData.title && !planData.name) {
@@ -94,10 +229,14 @@ const TravelPlanPage: React.FC = () => {
         
         // 嘗試將API返回的數據轉換為需要的格式
         const formattedData = formatApiResponse(planData);
-        setTravelPlan(formattedData);
+        
+        // 應用本地刪除
+        const filteredData = applyLocalDeletions(formattedData, deletedIds);
+        setTravelPlan(filteredData);
       } else {
-        // 直接使用API數據
-        setTravelPlan(planData);
+        // 應用本地刪除後使用API數據
+        const filteredData = applyLocalDeletions(planData, deletedIds);
+        setTravelPlan(filteredData);
       }
       
       setLoading(false);
@@ -116,7 +255,8 @@ const TravelPlanPage: React.FC = () => {
       setLoading(false);
     }
   };
-
+  
+  // 初始化並加載數據
   useEffect(() => {
     const fetchTravelPlan = async () => {
       if (isAuthenticated) {
@@ -388,6 +528,25 @@ const TravelPlanPage: React.FC = () => {
       return;
     }
 
+    // 確保我們有有效的計劃ID
+    let validPlanId = planId || travelPlan.id;
+    
+    // 從 URL 中嘗試獲取計劃ID
+    if (!validPlanId || validPlanId === 'undefined' || validPlanId === 'null') {
+      const url = window.location.pathname;
+      const planIdMatch = url.match(/\/travel-plans\/([a-zA-Z0-9]+)/);
+      validPlanId = planIdMatch ? planIdMatch[1] : '';
+      console.log(`[handleDeleteActivity] 從URL解析計劃ID: ${validPlanId}`);
+    }
+    
+    // 記錄當前計劃ID
+    if (validPlanId && validPlanId !== 'undefined') {
+      localStorage.setItem('travo_last_plan_id', validPlanId);
+      console.log(`[handleDeleteActivity] 保存當前計劃ID到本地存儲: ${validPlanId}`);
+    }
+
+    console.log(`[handleDeleteActivity] 使用計劃ID: ${validPlanId}`);
+
     // 確認用戶確實想刪除活動
     if (!window.confirm('確定要刪除此活動嗎？此操作無法撤銷。')) {
       console.log('[handleDeleteActivity] 用戶取消了刪除操作');
@@ -396,6 +555,9 @@ const TravelPlanPage: React.FC = () => {
 
     // 儲存原始旅行計劃數據，以便在錯誤時恢復
     const originalTravelPlan = { ...travelPlan };
+    
+    // 顯示刪除中狀態
+    const deletingToast = toast.loading('正在刪除活動...');
     
     try {
       // 使用提供的 dayIndex 或查找活動所在的日期
@@ -418,7 +580,8 @@ const TravelPlanPage: React.FC = () => {
         
         if (!activityFound) {
           console.warn(`[handleDeleteActivity] 在當前旅行計劃中找不到 ID 為 ${activityId} 的活動，可能已被刪除`);
-          toast('此活動可能已被刪除或不存在');
+          toast.dismiss(deletingToast);
+          toast.error('此活動可能已被刪除或不存在');
           return;
         }
       } else {
@@ -426,63 +589,150 @@ const TravelPlanPage: React.FC = () => {
         activityIndex = travelPlan.days[actualDayIndex].activities.findIndex(activity => activity.id === activityId);
         if (activityIndex === -1) {
           console.warn(`[handleDeleteActivity] 在第 ${actualDayIndex + 1} 天中找不到 ID 為 ${activityId} 的活動`);
-          toast('此活動可能已被刪除或不存在於指定日期');
+          toast.dismiss(deletingToast);
+          toast.error('此活動可能已被刪除或不存在於指定日期');
           return;
         }
       }
       
       console.log(`[handleDeleteActivity] 找到了活動，位於第 ${actualDayIndex} 天，索引 ${activityIndex}`);
       
-      // 立即更新本地狀態，提供即時反饋
-      setTravelPlan(prevPlan => {
-        if (!prevPlan) return prevPlan;
-        
-        const updatedDays = [...prevPlan.days];
-        if (actualDayIndex >= 0 && actualDayIndex < updatedDays.length) {
-          updatedDays[actualDayIndex] = {
-            ...updatedDays[actualDayIndex],
-            activities: updatedDays[actualDayIndex].activities.filter(activity => activity.id !== activityId)
-          };
-        }
-        
-        return {
-          ...prevPlan,
-          days: updatedDays
-        };
-      });
-
-      toast('正在刪除活動...');
-      
-      // 調用API刪除活動
-      console.log(`[handleDeleteActivity] 開始調用API刪除活動 ID: ${activityId}`);
-      const result = await travelPlanService.deleteActivity(travelPlan.id, activityId);
+      // 調用API刪除活動，確保使用有效的計劃ID
+      console.log(`[handleDeleteActivity] 開始調用API刪除活動 ID: ${activityId}，計劃ID: ${validPlanId}`);
+      const result = await travelPlanService.deleteActivity(validPlanId, activityId);
       console.log('[handleDeleteActivity] API刪除結果:', result);
       
+      toast.dismiss(deletingToast);
+      
       if (result.success) {
-        // 成功刪除活動
         console.log('[handleDeleteActivity] 活動刪除成功');
         
+        // 檢查是否是本地刪除模式
         if (result.localOnly) {
-          // 僅本地刪除成功，可能伺服器上已經不存在或發生其他問題
-          console.warn(`[handleDeleteActivity] 活動僅在本地刪除: ${result.message}`);
-          toast.success('活動已刪除', { duration: 2000 });
-          
-          if (result.serverError) {
-            // 伺服器端發生錯誤，但我們仍然在前端完成了刪除
-            console.error(`[handleDeleteActivity] 伺服器錯誤: ${result.error}`);
-            toast('活動已在畫面上移除，但伺服器可能未完全更新', { duration: 5000 });
-          }
-        } else {
-          // 完全成功
-          toast.success('活動已成功刪除', { duration: 2000 });
+          console.log('[handleDeleteActivity] 活動僅在本地刪除:', result.message);
+          toast.success('活動已在本地刪除，刷新頁面後仍然有效', { duration: 3000 });
         }
         
-        // 無論如何，本地刪除操作已完成
+        // 數據庫驗證結果，如果存在
+        const dbVerified = result.db_verification;
+        if (dbVerified === false) {
+          console.warn('[handleDeleteActivity] 數據庫驗證失敗，活動可能未在數據庫中刪除');
+          try {
+            // 嘗試強制重新載入計劃以確保一致性
+            console.log('[handleDeleteActivity] 嘗試強制刷新計劃...');
+            toast.loading('正在同步資料庫變更...');
+            const refreshedPlan = await travelPlanService.forceRefreshTravelPlan(validPlanId);
+            
+            if (refreshedPlan) {
+              console.log('[handleDeleteActivity] 計劃已強制刷新，更新前端狀態');
+              setTravelPlan(refreshedPlan);
+              toast.success('活動已刪除並同步到資料庫', { duration: 2000 });
+              return;
+            }
+          } catch (refreshError) {
+            console.error('[handleDeleteActivity] 強制刷新失敗:', refreshError);
+            // 繼續使用本地刪除方式
+          }
+        }
+        
+        // 更新本地狀態，提供即時反饋
+        setTravelPlan(prevPlan => {
+          if (!prevPlan) return prevPlan;
+          
+          const updatedDays = [...prevPlan.days];
+          if (actualDayIndex >= 0 && actualDayIndex < updatedDays.length) {
+            updatedDays[actualDayIndex] = {
+              ...updatedDays[actualDayIndex],
+              activities: updatedDays[actualDayIndex].activities.filter(activity => activity.id !== activityId)
+            };
+          }
+          
+          return {
+            ...prevPlan,
+            days: updatedDays
+          };
+        });
+        
+        // 將活動ID保存到本地存儲以確保刷新後仍然保持刪除狀態
+        if (result.localOnly || dbVerified !== true) {
+          saveLocalDeletion(validPlanId || 'unknown', activityId);
+          console.log(`[handleDeleteActivity] 已將活動 ${activityId} 添加到本地刪除記錄`);
+        }
+        
+        if (!result.localOnly) {
+          toast.success('活動已成功刪除', { duration: 2000 });
+        }
         return;
       } else {
-        // API調用返回失敗結果
-        console.error('[handleDeleteActivity] API返回刪除失敗:', result);
-        throw new Error(result.message || '刪除活動失敗，請再試一次');
+        // 處理不同類型的錯誤
+        if (result.clientError) {
+          // 客戶端錯誤，例如權限不足或無效的輸入
+          console.warn(`[handleDeleteActivity] 客戶端錯誤: ${result.message}`);
+          
+          // 特別處理權限錯誤
+          if (result.error && result.error.includes('permission_denied')) {
+            toast.error('您沒有權限刪除此活動。請確認您是此旅行計劃的擁有者或重新登入。', { duration: 5000 });
+            
+            // 提供重新登入按鈕
+            toast((t) => (
+              <div>
+                <p>權限問題可能是由於登入狀態過期，請重新登入：</p>
+                <button 
+                  className="mt-2 bg-blue-500 text-white p-2 rounded" 
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    // 清除登入狀態並跳轉到登入頁面
+                    localStorage.removeItem('token');
+                    navigate('/login', { state: { from: `/travel-plans/${validPlanId}` } });
+                  }}
+                >
+                  重新登入
+                </button>
+              </div>
+            ), { duration: 10000 });
+            
+            return;
+          }
+          
+          toast.error(result.message || '無法刪除活動，請確認您有權限執行此操作');
+          
+          // 嘗試重新加載旅行計劃以獲取最新數據
+          if (validPlanId) {
+            loadTravelPlan(validPlanId);
+          }
+          return;
+        } else if (result.serverError) {
+          // 服務器錯誤，如網絡問題或內部服務器錯誤
+          console.error(`[handleDeleteActivity] 服務器錯誤: ${result.message}`);
+          toast.error('服務器處理請求時出錯，請稍後再試');
+          
+          // 仍然在本地進行刪除標記
+          saveLocalDeletion(validPlanId || 'unknown', activityId);
+          setLocallyDeletedActivities(prev => [...prev, activityId]);
+          
+          // 更新本地界面
+          setTravelPlan(prevPlan => {
+            if (!prevPlan) return prevPlan;
+            const updatedDays = [...prevPlan.days];
+            updatedDays[actualDayIndex] = {
+              ...updatedDays[actualDayIndex],
+              activities: updatedDays[actualDayIndex].activities.filter(activity => activity.id !== activityId)
+            };
+            return { ...prevPlan, days: updatedDays };
+          });
+          
+          toast((t) => (
+            <div>
+              <p>活動已在界面上刪除，但未能保存到服務器。</p>
+              <p>刷新後活動仍保持刪除狀態。</p>
+            </div>
+          ), { duration: 5000 });
+          
+          return;
+        } else {
+          // 未分類的錯誤
+          throw new Error(result.message || '刪除活動失敗，請再試一次');
+        }
       }
     } catch (error: any) {
       // 恢復原始旅行計劃數據
@@ -490,11 +740,14 @@ const TravelPlanPage: React.FC = () => {
       setTravelPlan(originalTravelPlan);
       
       // 向用戶顯示錯誤訊息
+      toast.dismiss(deletingToast);
       toast.error(`刪除活動失敗: ${error.message || '未知錯誤'}`);
       
       // 在錯誤後，刷新數據以確保數據一致性
       console.log('[handleDeleteActivity] 嘗試重新加載旅行計劃數據...');
-      loadTravelPlan(planId || '');
+      if (validPlanId) {
+        loadTravelPlan(validPlanId);
+      }
     }
   };
   

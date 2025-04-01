@@ -4,6 +4,8 @@ import os
 from typing import Dict, Any, List, Optional
 from app.config.config import get_config
 from datetime import datetime
+import uuid
+import re
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -215,13 +217,19 @@ def get_place_description(place_name: str, place_type: str) -> str:
     # 這裡可以使用更複雜的邏輯，例如調用OpenAI API生成描述
     # 目前使用簡單的模板
     type_descriptions = {
-        "景點": f"{place_name}是京都著名的景點，吸引了眾多遊客前來參觀。",
+        "景點": f"{place_name}是當地著名的景點，吸引了眾多遊客前來參觀。",
         "餐廳": f"{place_name}是一家提供美味料理的餐廳，可以品嚐到當地特色美食。",
-        "文化體驗": f"{place_name}提供豐富的文化體驗活動，讓遊客深入了解京都傳統文化。",
-        "購物": f"{place_name}是一個理想的購物場所，提供各種紀念品和當地特產。"
+        "文化體驗": f"{place_name}提供豐富的文化體驗活動，讓遊客深入了解當地傳統文化。",
+        "購物": f"{place_name}是一個理想的購物場所，提供各種紀念品和當地特產。",
+        "公園": f"{place_name}是休閒放鬆的好去處，提供美麗的自然環境和休憩空間。",
+        "博物館": f"{place_name}收藏了豐富的展品，是了解當地歷史文化的重要場所。",
+        "寺廟": f"{place_name}是具有歷史意義的宗教場所，展現了獨特的建築風格和文化底蘊。",
+        "神社": f"{place_name}是傳統的信仰場所，體現了當地的民俗文化和宗教風貌。",
+        "咖啡廳": f"{place_name}提供舒適的環境和美味的飲品，是休息和社交的理想場所。",
+        "市場": f"{place_name}匯集了各種當地特色商品和美食，體現了當地的生活文化。"
     }
     
-    return type_descriptions.get(place_type, f"{place_name}是一個值得遊覽的地方。")
+    return type_descriptions.get(place_type, f"{place_name}是一個值得遊覽的地方，提供了獨特的當地體驗。")
 
 def get_place_tips(place_type: str) -> str:
     """
@@ -306,7 +314,7 @@ def estimate_duration(place_type: str) -> int:
     
     return durations.get(place_type, 90)
 
-def enrich_place_info(place_name: str, destination: str, lat: float, lng: float, place_type: str) -> Dict[str, Any]:
+def enrich_place_info(place_name: str, destination: str, lat: float, lng: float, place_type: str, activity_id: str = None) -> Dict[str, Any]:
     """
     豐富景點資訊
     
@@ -316,14 +324,29 @@ def enrich_place_info(place_name: str, destination: str, lat: float, lng: float,
         lat: 緯度
         lng: 經度
         place_type: 地點類型
+        activity_id: 活動唯一ID，如果沒有則生成新ID
     
     Returns:
         包含豐富資訊的景點字典
     """
     logger.info(f"豐富景點資訊: {place_name}, {destination}")
     
+    # 如果沒有提供活動ID，生成一個新的
+    if not activity_id:
+        activity_id = str(uuid.uuid4())
+        logger.info(f"為活動 '{place_name}' 生成新ID: {activity_id}")
+    else:
+        # 檢查ID是否為有效的UUID格式
+        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', activity_id, re.I):
+            original_id = activity_id
+            activity_id = str(uuid.uuid4())
+            logger.info(f"活動 '{place_name}' 的ID不是有效的UUID格式，已將 {original_id} 替換為 {activity_id}")
+        else:
+            logger.info(f"使用提供的活動ID: {activity_id} 用於 '{place_name}'")
+    
     # 初始化豐富的景點資訊
     enriched_place = {
+        "id": activity_id,  # 確保活動有唯一ID
         "name": place_name,
         "location": place_name,
         "type": place_type,
@@ -420,6 +443,15 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         豐富後的旅遊計畫
     """
+    # 初始化UUID統計
+    total_activities = 0
+    preserved_ids = 0
+    generated_ids = 0
+    replaced_ids = 0
+    
+    import re
+    uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    
     # 檢查傳入的旅遊計畫是否有效
     if not travel_plan:
         logger.error("傳入的旅遊計畫為空")
@@ -501,8 +533,26 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
             
             # 遍歷每個景點/活動
             for j, place in enumerate(activities_list):
+                total_activities += 1
                 place_name = place.get("name", place.get("location", "未知地點"))
                 logger.info(f"處理第 {day_number} 天第 {j+1} 個景點: {place_name}")
+                
+                # 檢查活動是否已有ID
+                activity_id = place.get("id")
+                if not activity_id:
+                    activity_id = str(uuid.uuid4())
+                    place["id"] = activity_id
+                    logger.info(f"為活動 '{place_name}' 生成新ID: {activity_id}")
+                    generated_ids += 1
+                elif not re.match(uuid_pattern, activity_id, re.I):
+                    original_id = activity_id
+                    activity_id = str(uuid.uuid4())
+                    place["id"] = activity_id
+                    logger.info(f"替換非UUID格式ID: {original_id} → {activity_id}")
+                    replaced_ids += 1
+                else:
+                    logger.info(f"保留原始UUID: {activity_id}")
+                    preserved_ids += 1
                 
                 try:
                     # 豐富景點資訊
@@ -511,7 +561,8 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
                         destination=destination,
                         lat=place.get("lat", 0),
                         lng=place.get("lng", 0),
-                        place_type=place.get("type", "景點")
+                        place_type=place.get("type", "景點"),
+                        activity_id=activity_id  # 確保傳遞活動ID
                     )
                     
                     # 保留原始的時間和其他可能的欄位
@@ -521,10 +572,11 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
                     
                     # 添加到日程中
                     enriched_day["activities"].append(enriched_place)
-                    logger.info(f"成功添加景點 {place_name} 的豐富資訊")
+                    logger.info(f"成功添加景點 {place_name} 的豐富資訊，ID: {activity_id}")
                 except Exception as e:
                     logger.error(f"處理景點 {place_name} 時發生錯誤: {e}")
-                    # 如果豐富失敗，仍添加原始景點資訊
+                    # 如果豐富失敗，仍添加原始景點資訊，但確保有ID
+                    place["id"] = activity_id
                     enriched_day["activities"].append(place)
             
             # 添加到計畫中
@@ -535,7 +587,8 @@ def enrich_travel_plan(travel_plan: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"豐富旅遊計畫時發生錯誤: {e}")
         # 發生錯誤時仍然返回部分處理的結果
     
-    logger.info(f"完成豐富旅遊計畫: {destination}，共 {len(enriched_plan['days'])} 天行程")
+    logger.info(f"完成豐富旅遊計畫: {destination}，共 {len(enriched_plan['days'])} 天行程，總計 {total_activities} 個活動")
+    logger.info(f"UUID統計 - 保留原始ID: {preserved_ids}, 生成新ID: {generated_ids}, 替換無效ID: {replaced_ids}")
     
     # 確保所有datetime對象都被轉換為字符串
     def convert_datetime(obj):

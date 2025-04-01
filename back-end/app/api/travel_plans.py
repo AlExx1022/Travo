@@ -184,10 +184,28 @@ def update_travel_plan(plan_id):
     success, error = TravelPlan.update_plan(plan_id, data, user_id)
     
     if not success:
-        return jsonify({
-            'success': False,
-            'message': error
-        }), 400
+        # 如果錯誤是一個字典並且包含錯誤代碼
+        if isinstance(error, dict) and 'error_code' in error:
+            if error['error_code'] == 'permission_denied':
+                # 權限錯誤
+                return jsonify({
+                    'success': False,
+                    'message': error.get('message', '無權更新此計劃'),
+                    'error_code': error['error_code']
+                }), 403
+            else:
+                # 其他錯誤代碼
+                return jsonify({
+                    'success': False,
+                    'message': error.get('message', '更新計劃失敗'),
+                    'error_code': error['error_code']
+                }), 400
+        else:
+            # 處理原來的字符串錯誤訊息
+            return jsonify({
+                'success': False,
+                'message': error if isinstance(error, str) else '更新計劃失敗'
+            }), 400
     
     return jsonify({
         'success': True,
@@ -452,8 +470,16 @@ def add_activity(plan_id):
     logger.info(f"[add_activity] 添加活動到第 {day_index+1} 天: {activity['name']}, ID: {activity['id']}")
     plan['days'][day_index]['activities'].append(activity)
     
+    # 確保不包含 _id 欄位，避免 MongoDB 錯誤
+    if "_id" in plan:
+        logger.info(f"[add_activity] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
+        plan_copy = plan.copy()
+        del plan_copy["_id"]
+    else:
+        plan_copy = plan
+    
     # 更新旅行計劃
-    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)
     
     if not success:
         logger.error(f"[add_activity] 更新旅行計劃失敗: {error}")
@@ -592,8 +618,16 @@ def update_activity(plan_id, activity_id):
         plan['days'][source_day_index]['activities'][source_activity_index] = updated_activity
         logger.info(f"[update_activity] 在第 {source_day_index+1} 天更新活動 {updated_activity['id']}")
     
+    # 確保不包含 _id 欄位，避免 MongoDB 錯誤
+    if "_id" in plan:
+        logger.info(f"[update_activity] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
+        plan_copy = plan.copy()
+        del plan_copy["_id"]
+    else:
+        plan_copy = plan
+    
     # 更新旅行計劃
-    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)
     
     if not success:
         logger.error(f"[update_activity] 更新旅行計劃失敗: {error}")
@@ -629,7 +663,8 @@ def delete_activity(plan_id, activity_id):
         logger.error(f"[delete_activity] 請求刪除活動時提供了無效的活動ID: {activity_id}")
         return jsonify({
             'success': False,
-            'message': '無效的活動ID'
+            'message': '無效的活動ID',
+            'error_code': 'invalid_activity_id'
         }), 400
     
     # 檢查計劃ID有效性
@@ -637,7 +672,8 @@ def delete_activity(plan_id, activity_id):
         logger.error(f"[delete_activity] 請求刪除活動時提供了無效的計劃ID: {plan_id}")
         return jsonify({
             'success': False,
-            'message': '無效的計劃ID'
+            'message': '無效的計劃ID',
+            'error_code': 'invalid_plan_id'
         }), 400
     
     # 獲取旅行計劃
@@ -646,15 +682,27 @@ def delete_activity(plan_id, activity_id):
         logger.error(f"[delete_activity] 找不到旅行計劃 ID: {plan_id}")
         return jsonify({
             'success': False,
-            'message': '找不到旅行計劃'
+            'message': '找不到旅行計劃',
+            'error_code': 'plan_not_found'
         }), 404
     
-    # 檢查權限
-    if str(plan['user_id']) != user_id:
-        logger.warning(f"[delete_activity] 用戶 {user_id} 無權修改計劃 {plan_id}")
+    # 保存修改前的計劃副本用於記錄差異
+    original_plan = {
+        "days": [{"day": i+1, "activity_count": len(day.get("activities", [])), "activity_ids": [a.get("id") for a in day.get("activities", [])]} for i, day in enumerate(plan.get("days", []))]
+    }
+    
+    # 詳細檢查權限
+    plan_user_id = plan.get('user_id', '')
+    plan_user_id_str = str(plan_user_id)
+    logger.info(f"[delete_activity] 計劃擁有者ID: {plan_user_id_str}, 當前用戶ID: {user_id}")
+    
+    if plan_user_id_str != user_id:
+        logger.warning(f"[delete_activity] 權限錯誤: 用戶 {user_id} 無權刪除計劃 {plan_id} 中的活動")
+        logger.warning(f"[delete_activity] 權限詳情: 計劃擁有者={plan_user_id_str}, 請求用戶={user_id}, ID是否匹配={plan_user_id_str == user_id}")
         return jsonify({
             'success': False,
-            'message': '無權修改此旅行計劃'
+            'message': '您沒有權限修改此旅行計劃',
+            'error_code': 'permission_denied'
         }), 403
     
     # 尋找活動
@@ -720,8 +768,25 @@ def delete_activity(plan_id, activity_id):
             'message': f'找不到ID為 {activity_id} 的活動'
         }), 404
     
+    # 更新旅行計劃前的計劃狀態
+    modified_plan = {
+        "days": [{"day": i+1, "activity_count": len(day.get("activities", [])), "activity_ids": [a.get("id") for a in day.get("activities", [])]} for i, day in enumerate(plan.get("days", []))]
+    }
+    
+    # 記錄計劃活動變更的詳細信息
+    logger.info(f"[delete_activity] 計劃 {plan_id} 修改前狀態: {original_plan}")
+    logger.info(f"[delete_activity] 計劃 {plan_id} 修改後狀態: {modified_plan}")
+    
+    # 確保不包含 _id 欄位，避免 MongoDB 錯誤
+    if "_id" in plan:
+        logger.info(f"[delete_activity] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
+        plan_copy = plan.copy()
+        del plan_copy["_id"]
+    else:
+        plan_copy = plan
+        
     # 更新旅行計劃
-    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)
     
     if not success:
         logger.error(f"[delete_activity] 更新旅行計劃時發生錯誤: {error}")
@@ -732,10 +797,28 @@ def delete_activity(plan_id, activity_id):
             'message': error
         }), 400
     
+    # 獲取更新後的計劃以確認刪除已應用到數據庫
+    updated_plan = TravelPlan.find_by_id(plan_id)
+    updated_plan_summary = {
+        "days": [{"day": i+1, "activity_count": len(day.get("activities", [])), "activity_ids": [a.get("id") for a in day.get("activities", [])]} for i, day in enumerate(updated_plan.get("days", []))]
+    }
+    logger.info(f"[delete_activity] 計劃 {plan_id} 更新後數據庫狀態: {updated_plan_summary}")
+    
+    # 驗證活動是否確實從數據庫中刪除
+    is_activity_still_present = False
+    for day in updated_plan.get("days", []):
+        if any(act.get("id") == activity_id for act in day.get("activities", [])):
+            is_activity_still_present = True
+            break
+    
+    if is_activity_still_present:
+        logger.error(f"[delete_activity] 警告：儘管操作成功，活動 {activity_id} 仍存在於數據庫中!")
+    
     # 返回被刪除的活動信息，以便前端確認
     response_data = {
         'success': True,
-        'message': '活動刪除成功'
+        'message': '活動刪除成功',
+        'db_verification': not is_activity_still_present  # 表示數據庫驗證結果
     }
     
     # 添加被刪除的活動信息
@@ -777,7 +860,8 @@ def delete_activity_by_index(plan_id, day_index, activity_index):
         logger.warning(f"用戶 {user_id} 無權刪除計劃 {plan_id} 中的活動")
         return jsonify({
             'success': False,
-            'message': '無權修改此旅行計劃'
+            'message': '無權修改此旅行計劃',
+            'error_code': 'permission_denied'
         }), 403
     
     # 檢查索引是否有效
@@ -803,8 +887,16 @@ def delete_activity_by_index(plan_id, day_index, activity_index):
     deleted_activity = plan['days'][day_index]['activities'].pop(activity_index)
     logger.info(f"已從計劃 {plan_id} 的第 {day_index+1} 天刪除索引為 {activity_index} 的活動")
     
+    # 確保不包含 _id 欄位，避免 MongoDB 錯誤
+    if "_id" in plan:
+        logger.info(f"[delete_activity_by_index] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
+        plan_copy = plan.copy()
+        del plan_copy["_id"]
+    else:
+        plan_copy = plan
+    
     # 更新旅行計劃
-    success, error = TravelPlan.update_plan(plan_id, plan, user_id)
+    success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)
     
     if not success:
         logger.error(f"更新旅行計劃失敗: {error}")

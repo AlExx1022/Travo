@@ -165,6 +165,9 @@ def generate_travel_plan(destination: str, start_date: str, end_date: str,
         "days": [],
     }
     
+    logger.info(f"開始為 '{destination}' 生成 {days} 天的旅行計劃")
+    total_activities = 0
+    
     # 處理日程安排
     if days_data:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -182,6 +185,8 @@ def generate_travel_plan(destination: str, start_date: str, end_date: str,
             
             # 處理行程
             schedule = day_data.get("schedule", [])
+            day_activities_count = 0
+            
             for item in schedule:
                 # 為每個活動分配唯一的 UUID
                 activity_id = str(uuid.uuid4())
@@ -202,10 +207,14 @@ def generate_travel_plan(destination: str, start_date: str, end_date: str,
                 }
                 
                 # 記錄活動ID的生成
-                logger.info(f"為新活動 '{activity['name']}' 生成UUID: {activity_id}")
+                logger.info(f"第 {i+1} 天: 為活動 '{activity['name']}' 生成UUID: {activity_id}")
+                day_activities_count += 1
+                total_activities += 1
                 
                 day["activities"].append(activity)
             
+            logger.info(f"第 {i+1} 天添加了 {day_activities_count} 個活動")
             result["days"].append(day)
     
+    logger.info(f"旅行計劃生成完成: '{destination}' {days} 天行程，共 {total_activities} 個活動")
     return result 

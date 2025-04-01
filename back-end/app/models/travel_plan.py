@@ -59,7 +59,7 @@ class TravelPlan:
             
             # 記錄活動 ID 生成/替換情況
             if total_activities > 0:
-                logger.info(f"創建計劃時共檢查 {total_activities} 個活動，生成/替換了 {total_added_ids} 個UUID")
+                logger.info(f"創建計劃時共檢查 {total_activities} 個活動，生成/替換了 {total_added_ids} 個UUID（{round(total_added_ids/total_activities*100, 2)}%）")
         
         # 創建計劃文檔
         now = datetime.utcnow()
@@ -79,7 +79,7 @@ class TravelPlan:
         }
         
         # 記錄添加的預算和人數信息
-        logger.info(f"創建旅行計劃 - 預算: {plan['budget']}, 旅行人數: {plan['travelers']}")
+        logger.info(f"創建旅行計劃 - 目的地: {plan['destination']}, 預算: {plan['budget']}, 旅行人數: {plan['travelers']}, 天數: {len(plan['days'])}")
         
         try:
             result = cls.get_collection().insert_one(plan)
@@ -149,7 +149,7 @@ class TravelPlan:
                             {"$set": update_data}
                         )
                         if result.modified_count > 0:
-                            logger.info(f"已更新計劃 {plan_id} 的活動ID")
+                            logger.info(f"已更新計劃 {plan_id} 的活動ID並保存到數據庫")
                         else:
                             logger.warning(f"計劃 {plan_id} 的活動ID更新失敗")
                     except Exception as e:
@@ -207,7 +207,7 @@ class TravelPlan:
                 plan_id = ObjectId(plan_id)
             except:
                 logger.error(f"無效的計劃ID格式: {plan_id}")
-                return False, "無效的計劃ID"
+                return False, {'message': '無效的計劃ID', 'error_code': 'invalid_plan_id'}
         
         # 如果提供了用戶ID，確保只有計劃擁有者可以更新
         if user_id:
@@ -216,12 +216,25 @@ class TravelPlan:
                     user_id = ObjectId(user_id)
                 except:
                     logger.error(f"無效的用戶ID格式: {user_id}")
-                    return False, "無效的用戶ID"
+                    return False, {'message': '無效的用戶ID', 'error_code': 'invalid_user_id'}
             
             plan = cls.find_by_id(plan_id)
-            if not plan or plan.get("user_id") != user_id:
-                logger.warning(f"用戶 {user_id} 無權更新計劃 {plan_id}")
-                return False, "無權更新此計劃"
+            if not plan:
+                logger.error(f"找不到計劃 {plan_id} 以進行權限檢查")
+                return False, {'message': '找不到計劃', 'error_code': 'plan_not_found'}
+            
+            plan_owner_id = plan.get("user_id")
+            if isinstance(plan_owner_id, ObjectId):
+                plan_owner_id_str = str(plan_owner_id)
+            else:
+                plan_owner_id_str = str(plan_owner_id)
+            
+            user_id_str = str(user_id)
+            
+            if plan_owner_id_str != user_id_str:
+                logger.warning(f"權限錯誤: 用戶 {user_id_str} 無權更新計劃 {plan_id}")
+                logger.warning(f"權限詳情: 計劃擁有者={plan_owner_id_str}, 請求用戶={user_id_str}")
+                return False, {"message": "無權更新此計劃", "error_code": "permission_denied"}
         
         # 確保每個活動都有有效的 UUID
         if "days" in update_data and isinstance(update_data["days"], list):
@@ -254,22 +267,72 @@ class TravelPlan:
             
             # 記錄活動 ID 生成/替換情況
             if total_activities > 0:
-                logger.info(f"更新計劃時共檢查 {total_activities} 個活動，生成/替換了 {total_added_ids} 個UUID")
+                logger.info(f"更新計劃 {plan_id} 時共檢查 {total_activities} 個活動，生成/替換了 {total_added_ids} 個UUID")
                 if uuid_changes_made:
                     logger.info(f"更新計劃過程中修改了活動ID，將保存這些更改")
         
         # 準備更新數據
         update_data["updated_at"] = datetime.utcnow()
         
+        # 記錄更新計劃的初始狀態
+        update_summary = {
+            "days_count": len(update_data.get("days", [])),
+            "activities_count": sum(len(day.get("activities", [])) for day in update_data.get("days", []))
+        }
+        logger.info(f"準備更新計劃 {plan_id}，天數: {update_summary['days_count']}, 活動總數: {update_summary['activities_count']}")
+        
         try:
+            # 檢查計劃是否存在
+            original_plan = cls.get_collection().find_one({"_id": plan_id})
+            if not original_plan:
+                logger.error(f"計劃 {plan_id} 不存在，無法更新")
+                return False, "計劃不存在，無法更新"
+                
+            # 記錄原始計劃的活動數量
+            original_activities_count = sum(len(day.get("activities", [])) for day in original_plan.get("days", []))
+            logger.info(f"原始計劃 {plan_id} 的活動總數: {original_activities_count}")
+            
+            # 確保不包含 _id 欄位，避免 MongoDB 錯誤
+            if "_id" in update_data:
+                logger.warning(f"更新數據中包含 _id 欄位，將其移除以避免 MongoDB 錯誤")
+                del update_data["_id"]
+            
+            # 更新計劃
             result = cls.get_collection().update_one(
                 {"_id": plan_id},
                 {"$set": update_data}
             )
+            
+            # 詳細記錄更新結果
             if result.modified_count > 0:
-                logger.info(f"成功更新旅行計劃: {plan_id}")
+                logger.info(f"成功更新旅行計劃: {plan_id}，影響文檔數: {result.modified_count}")
+                
+                # 驗證更新是否確實寫入數據庫
+                updated_plan = cls.get_collection().find_one({"_id": plan_id})
+                if updated_plan:
+                    updated_activities_count = sum(len(day.get("activities", [])) for day in updated_plan.get("days", []))
+                    logger.info(f"更新後計劃 {plan_id} 的活動總數: {updated_activities_count}")
+                    
+                    # 檢查活動數量是否符合預期
+                    expected_activities = update_summary["activities_count"]
+                    if updated_activities_count != expected_activities:
+                        logger.warning(f"計劃 {plan_id} 的活動數量不符合預期! 預期: {expected_activities}, 實際: {updated_activities_count}")
+                
                 return True, None
-            return False, "計劃更新失敗"
+            elif result.matched_count > 0:
+                logger.info(f"旅行計劃匹配但無更改: {plan_id}，匹配文檔數: {result.matched_count}")
+                
+                # 驗證文檔是否確實保持不變
+                current_plan = cls.get_collection().find_one({"_id": plan_id})
+                if current_plan:
+                    current_activities_count = sum(len(day.get("activities", [])) for day in current_plan.get("days", []))
+                    if current_activities_count != original_activities_count:
+                        logger.warning(f"警告：儘管報告無更改，但計劃 {plan_id} 的活動數量已變化! 原始: {original_activities_count}, 當前: {current_activities_count}")
+                
+                return True, None
+            
+            logger.warning(f"計劃更新失敗，未找到匹配文檔: {plan_id}")
+            return False, "計劃更新失敗，未找到匹配文檔"
         except Exception as e:
             logger.error(f"更新旅行計劃失敗: {str(e)}")
             return False, f"更新旅行計劃失敗: {str(e)}"
