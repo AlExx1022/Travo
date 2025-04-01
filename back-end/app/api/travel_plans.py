@@ -623,8 +623,18 @@ def update_activity(plan_id, activity_id):
         logger.info(f"[update_activity] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
         plan_copy = plan.copy()
         del plan_copy["_id"]
+        
+        # 確保 user_id 保持為 ObjectId 類型
+        if "user_id" in plan and isinstance(plan["user_id"], ObjectId):
+            plan_copy["user_id"] = plan["user_id"]  # 保持原始的 ObjectId 類型
+            logger.info(f"[update_activity] 確保 user_id 保持為 ObjectId 類型: {type(plan['user_id'])}")
     else:
         plan_copy = plan
+        # 確保 user_id 保持為 ObjectId 類型
+        if "user_id" in plan and isinstance(plan["user_id"], ObjectId) and "user_id" in plan_copy:
+            if not isinstance(plan_copy["user_id"], ObjectId):
+                plan_copy["user_id"] = plan["user_id"]
+                logger.info(f"[update_activity] 確保 user_id 保持為 ObjectId 類型: {type(plan['user_id'])}")
     
     # 更新旅行計劃
     success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)
@@ -782,8 +792,18 @@ def delete_activity(plan_id, activity_id):
         logger.info(f"[delete_activity] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
         plan_copy = plan.copy()
         del plan_copy["_id"]
+        
+        # 確保 user_id 保持為 ObjectId 類型
+        if "user_id" in plan and isinstance(plan["user_id"], ObjectId):
+            plan_copy["user_id"] = plan["user_id"]  # 保持原始的 ObjectId 類型
+            logger.info(f"[delete_activity] 確保 user_id 保持為 ObjectId 類型: {type(plan['user_id'])}")
     else:
         plan_copy = plan
+        # 確保 user_id 保持為 ObjectId 類型
+        if "user_id" in plan and isinstance(plan["user_id"], ObjectId) and "user_id" in plan_copy:
+            if not isinstance(plan_copy["user_id"], ObjectId):
+                plan_copy["user_id"] = plan["user_id"]
+                logger.info(f"[delete_activity] 確保 user_id 保持為 ObjectId 類型: {type(plan['user_id'])}")
         
     # 更新旅行計劃
     success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)
@@ -892,8 +912,18 @@ def delete_activity_by_index(plan_id, day_index, activity_index):
         logger.info(f"[delete_activity_by_index] 從計劃數據中移除 _id 欄位，避免 MongoDB 錯誤")
         plan_copy = plan.copy()
         del plan_copy["_id"]
+        
+        # 確保 user_id 保持為 ObjectId 類型
+        if "user_id" in plan and isinstance(plan["user_id"], ObjectId):
+            plan_copy["user_id"] = plan["user_id"]  # 保持原始的 ObjectId 類型
+            logger.info(f"[delete_activity_by_index] 確保 user_id 保持為 ObjectId 類型: {type(plan['user_id'])}")
     else:
         plan_copy = plan
+        # 確保 user_id 保持為 ObjectId 類型
+        if "user_id" in plan and isinstance(plan["user_id"], ObjectId) and "user_id" in plan_copy:
+            if not isinstance(plan_copy["user_id"], ObjectId):
+                plan_copy["user_id"] = plan["user_id"]
+                logger.info(f"[delete_activity_by_index] 確保 user_id 保持為 ObjectId 類型: {type(plan['user_id'])}")
     
     # 更新旅行計劃
     success, error = TravelPlan.update_plan(plan_id, plan_copy, user_id)

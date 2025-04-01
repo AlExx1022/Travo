@@ -292,15 +292,35 @@ class TravelPlan:
             original_activities_count = sum(len(day.get("activities", [])) for day in original_plan.get("days", []))
             logger.info(f"原始計劃 {plan_id} 的活動總數: {original_activities_count}")
             
+            # 保存原始 user_id 的類型和值
+            original_user_id = None
+            if "user_id" in update_data and "user_id" in original_plan:
+                original_user_id = original_plan["user_id"]
+                logger.info(f"記錄原始 user_id 類型: {type(original_user_id)}")
+            
             # 確保不包含 _id 欄位，避免 MongoDB 錯誤
             if "_id" in update_data:
                 logger.warning(f"更新數據中包含 _id 欄位，將其移除以避免 MongoDB 錯誤")
-                del update_data["_id"]
+                update_data_copy = update_data.copy()
+                del update_data_copy["_id"]
+                
+                # 如果 user_id 原本是 ObjectId，確保它保持為 ObjectId
+                if original_user_id and isinstance(original_user_id, ObjectId) and "user_id" in update_data_copy:
+                    if not isinstance(update_data_copy["user_id"], ObjectId):
+                        update_data_copy["user_id"] = original_user_id
+                        logger.info(f"確保 user_id 保持為 ObjectId 類型")
+            else:
+                update_data_copy = update_data
+                # 如果 user_id 原本是 ObjectId，確保它保持為 ObjectId
+                if original_user_id and isinstance(original_user_id, ObjectId) and "user_id" in update_data_copy:
+                    if not isinstance(update_data_copy["user_id"], ObjectId):
+                        update_data_copy["user_id"] = original_user_id
+                        logger.info(f"確保 user_id 保持為 ObjectId 類型")
             
             # 更新計劃
             result = cls.get_collection().update_one(
                 {"_id": plan_id},
-                {"$set": update_data}
+                {"$set": update_data_copy}
             )
             
             # 詳細記錄更新結果
@@ -317,6 +337,12 @@ class TravelPlan:
                     expected_activities = update_summary["activities_count"]
                     if updated_activities_count != expected_activities:
                         logger.warning(f"計劃 {plan_id} 的活動數量不符合預期! 預期: {expected_activities}, 實際: {updated_activities_count}")
+                    
+                    # 檢查 user_id 類型是否保持不變
+                    updated_user_id = updated_plan.get("user_id")
+                    logger.info(f"更新後的 user_id 類型: {type(updated_user_id)}")
+                    if original_user_id and type(original_user_id) != type(updated_user_id):
+                        logger.warning(f"警告：user_id 類型已變更! 原始類型: {type(original_user_id)}, 更新後類型: {type(updated_user_id)}")
                 
                 return True, None
             elif result.matched_count > 0:
