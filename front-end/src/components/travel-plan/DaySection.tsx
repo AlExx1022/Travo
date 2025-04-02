@@ -25,9 +25,10 @@ interface DaySectionProps {
   date: string;
   activities: Activity[];
   onDeleteActivity?: (dayIndex: number, activityId: string) => void;
+  onAddActivity?: (dayIndex: number) => void;
 }
 
-const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDeleteActivity }) => {
+const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDeleteActivity, onAddActivity }) => {
   // 格式化日期
   const formatDate = (dateString: string): string => {
     try {
@@ -59,6 +60,23 @@ const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDelete
     }
     return activity;
   });
+  
+  // 按照活動時間排序
+  const sortedActivities = [...activitiesWithIds].sort((a, b) => {
+    // 將時間字符串轉換為分鐘數以便比較
+    const timeToMinutes = (timeStr: string): number => {
+      if (!timeStr) return 0;
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+    
+    const timeA = timeToMinutes(a.time || '00:00');
+    const timeB = timeToMinutes(b.time || '00:00');
+    
+    return timeA - timeB; // 升序排列，早的時間在前
+  });
+  
+  console.log(`[DaySection] 第 ${day} 天的活動已按時間排序`);
 
   // 檢查ID是否為有效的UUID
   function isValidUuid(id: string): boolean {
@@ -134,7 +152,7 @@ const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDelete
       {/* 活動列表 */}
       <div className="pl-4">
         {activitiesWithIds.length > 0 ? (
-          activitiesWithIds.map((activity, index) => (
+          sortedActivities.map((activity, index) => (
             <div key={activity.id || `activity-${index}`} className="relative">
               {/* 活動卡片 */}
               <div className="mb-3 relative">
@@ -173,6 +191,21 @@ const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDelete
         ) : (
           <div className="bg-gray-100 rounded-lg p-8 text-center">
             <p className="text-gray-500">尚未安排行程</p>
+          </div>
+        )}
+        
+        {/* 添加活動按鈕 */}
+        {onAddActivity && (
+          <div className="flex justify-end mt-6">
+            <button
+              onClick={() => onAddActivity(day - 1)} // day - 1 是因為索引從0開始
+              className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg flex items-center hover:bg-blue-100 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              新增活動
+            </button>
           </div>
         )}
       </div>

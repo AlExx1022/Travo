@@ -6,6 +6,7 @@ import ActivityCard from '../components/travel-plan/ActivityCard';
 import TimelineConnector from '../components/travel-plan/TimelineConnector';
 import ImageCarousel from '../components/travel-plan/ImageCarousel';
 import RatingDisplay from '../components/travel-plan/RatingDisplay';
+import ActivityForm from '../components/travel-plan/ActivityForm';
 import { useAuth } from '../contexts/AuthContext';
 import travelPlanService from '../services/travelPlanService';
 import toast from 'react-hot-toast';
@@ -84,6 +85,9 @@ const TravelPlanPage: React.FC = () => {
   const [locallyDeletedActivities, setLocallyDeletedActivities] = useState<string[]>([]);
   const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
   const [editedTitle, setEditedTitle] = useState<string>('');
+  // 新增活動相關狀態
+  const [isAddingActivity, setIsAddingActivity] = useState<boolean>(false);
+  const [activityDayIndex, setActivityDayIndex] = useState<number>(0);
   
   // 本地刪除記錄的 localStorage 鍵名
   const getLocalStorageKey = (pid: string) => `travo_deleted_activities_${pid}`;
@@ -820,6 +824,28 @@ const TravelPlanPage: React.FC = () => {
     }
   };
   
+  // 處理開始新增活動
+  const handleStartAddActivity = (dayIndex: number) => {
+    setActivityDayIndex(dayIndex);
+    setIsAddingActivity(true);
+  };
+  
+  // 處理取消新增活動
+  const handleCancelAddActivity = () => {
+    setIsAddingActivity(false);
+  };
+  
+  // 處理新增活動成功
+  const handleActivityAddSuccess = () => {
+    setIsAddingActivity(false);
+    
+    // 重新載入旅行計劃以獲取最新數據
+    if (planId) {
+      toast.success('正在重新載入旅行計劃...');
+      loadTravelPlan(planId);
+    }
+  };
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -865,6 +891,21 @@ const TravelPlanPage: React.FC = () => {
       {showShareNotification && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-md shadow-lg z-50">
           已複製旅行計劃連結到剪貼板
+        </div>
+      )}
+      
+      {/* 新增活動表單對話框 */}
+      {isAddingActivity && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="p-4">
+              <ActivityForm
+                dayIndex={activityDayIndex}
+                onSuccess={handleActivityAddSuccess}
+                onCancel={handleCancelAddActivity}
+              />
+            </div>
+          </div>
         </div>
       )}
       
@@ -1015,13 +1056,15 @@ const TravelPlanPage: React.FC = () => {
                       : [];
                     
                     return (
-                      <DaySection
-                        key={index}
-                        day={index + 1}
-                        date={day.date}
-                        activities={validActivities}
-                        onDeleteActivity={handleDeleteActivity}
-                      />
+                      <div key={index} className="mb-8">
+                        <DaySection
+                          day={index + 1}
+                          date={day.date}
+                          activities={validActivities}
+                          onDeleteActivity={handleDeleteActivity}
+                          onAddActivity={handleStartAddActivity}
+                        />
+                      </div>
                     );
                   })}
                 </>
