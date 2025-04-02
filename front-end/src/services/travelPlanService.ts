@@ -79,11 +79,12 @@ class TravelPlanService {
 
   /**
    * 獲取用戶所有旅行計劃
+   * @param options 可選參數對象，可以包含 includeActivities 等選項
    * @returns 包含用戶所有旅行計劃的回應
    */
-  async getUserTravelPlans() {
+  async getUserTravelPlans(options: { includeActivities?: boolean } = {}) {
     try {
-      console.log('開始獲取用戶旅行計劃數據');
+      console.log('開始獲取用戶旅行計劃數據', options);
       console.log('API 基礎 URL:', API_BASE_URL);
       
       const token = localStorage.getItem('travo_auth_token');
@@ -93,11 +94,21 @@ class TravelPlanService {
       }
       
       console.log('已獲取認證令牌 (長度):', token.length);
-      console.log('正在發送API請求獲取用戶旅行計劃，完整 URL:', `${API_BASE_URL}/travel-plans`);
+      
+      // 構建 URL 並添加參數
+      let url = `${API_BASE_URL}/travel-plans`;
+      
+      // 如果需要包含活動數據，添加對應的參數
+      if (options.includeActivities) {
+        url += '?include_activities=true';
+        console.log('請求包含完整活動數據');
+      }
+      
+      console.log('正在發送API請求獲取用戶旅行計劃，完整 URL:', url);
       
       try {
         // 嘗試使用直接的 fetch 而不是 fetchWithRetry，以便獲取更詳細的錯誤信息
-        const response = await fetch(`${API_BASE_URL}/travel-plans`, {
+        const response = await fetch(url, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`,

@@ -17,6 +17,22 @@ interface TravelPlan {
   travelers: number;
   created_at: string;
   updated_at: string;
+  // 添加行程活動和日程
+  days?: Array<{
+    date: string;
+    activities: Array<{
+      id: string;
+      name: string;
+      photos?: string[];
+      // 其他活動屬性
+    }>;
+  }>;
+  activities?: Array<{
+    id: string;
+    name: string;
+    photos?: string[];
+    // 其他活動屬性
+  }>;
 }
 
 const MyTravelPlansPage: React.FC = () => {
@@ -32,6 +48,34 @@ const MyTravelPlansPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('updated_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [retryCount, setRetryCount] = useState<number>(0);
+
+  // 從行程活動中提取預覽圖片
+  const getPreviewImage = (plan: TravelPlan): string | null => {
+    // 首先檢查 days 陣列中的活動
+    if (plan.days && plan.days.length > 0) {
+      for (const day of plan.days) {
+        if (day.activities && day.activities.length > 0) {
+          for (const activity of day.activities) {
+            if (activity.photos && activity.photos.length > 0) {
+              return activity.photos[0]; // 返回第一個找到的照片
+            }
+          }
+        }
+      }
+    }
+    
+    // 然後檢查 activities 陣列
+    if (plan.activities && plan.activities.length > 0) {
+      for (const activity of plan.activities) {
+        if (activity.photos && activity.photos.length > 0) {
+          return activity.photos[0]; // 返回第一個找到的照片
+        }
+      }
+    }
+    
+    // 如果沒有找到照片，返回 null
+    return null;
+  };
 
   // 獲取用戶的所有旅行計劃
   useEffect(() => {
@@ -49,7 +93,8 @@ const MyTravelPlansPage: React.FC = () => {
         setError(null);
         
         console.log('正在連接 API 獲取旅行計劃數據');
-        const data = await travelPlanService.getUserTravelPlans();
+        // 確保請求中包含擴展參數，以獲取完整的活動數據
+        const data = await travelPlanService.getUserTravelPlans({ includeActivities: true });
         
         console.log('獲取到的旅行計劃數據:', data);
         
@@ -65,6 +110,48 @@ const MyTravelPlansPage: React.FC = () => {
               plan.id = plan._id || plan.planId || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               console.log('已為旅行計劃分配臨時 id:', plan.id);
             }
+            
+            // 檢查是否包含活動數據
+            if (plan.days && plan.days.length > 0) {
+              console.log(`旅行計劃 ${plan.id} 包含 ${plan.days.length} 天的行程`);
+              let totalActivities = 0;
+              let activitiesWithPhotos = 0;
+              
+              plan.days.forEach((day: any, index: number) => {
+                if (day.activities && day.activities.length > 0) {
+                  totalActivities += day.activities.length;
+                  
+                  day.activities.forEach((activity: any) => {
+                    if (activity.photos && activity.photos.length > 0) {
+                      activitiesWithPhotos++;
+                      console.log(`第 ${index+1} 天有活動包含照片:`, activity.name);
+                    }
+                  });
+                }
+              });
+              
+              console.log(`旅行計劃 ${plan.id} 共有 ${totalActivities} 個活動，其中 ${activitiesWithPhotos} 個包含照片`);
+              const previewImage = getPreviewImage(plan);
+              if (previewImage) {
+                console.log(`已找到旅行計劃 ${plan.id} 的預覽圖片:`, previewImage.substring(0, 50) + '...');
+              } else {
+                console.log(`旅行計劃 ${plan.id} 沒有找到活動照片，將使用佔位元素`);
+              }
+            } else if (plan.activities && plan.activities.length > 0) {
+              console.log(`旅行計劃 ${plan.id} 包含 ${plan.activities.length} 個活動（未分日期）`);
+              
+              let activitiesWithPhotos = 0;
+              plan.activities.forEach((activity: any) => {
+                if (activity.photos && activity.photos.length > 0) {
+                  activitiesWithPhotos++;
+                }
+              });
+              
+              console.log(`旅行計劃 ${plan.id} 中有 ${activitiesWithPhotos} 個活動包含照片`);
+            } else {
+              console.log(`旅行計劃 ${plan.id} 沒有包含活動數據，將使用佔位元素`);
+            }
+            
             return plan as TravelPlan;
           });
           setTravelPlans(validatedPlans);
@@ -78,6 +165,16 @@ const MyTravelPlansPage: React.FC = () => {
               plan.id = plan._id || plan.planId || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               console.log('已為旅行計劃分配臨時 id:', plan.id);
             }
+            
+            // 同樣檢查活動數據
+            if (plan.days && plan.days.length > 0) {
+              console.log(`旅行計劃 ${plan.id} 包含 ${plan.days.length} 天的行程`);
+            } else if (plan.activities && plan.activities.length > 0) {
+              console.log(`旅行計劃 ${plan.id} 包含 ${plan.activities.length} 個活動（未分日期）`);
+            } else {
+              console.log(`旅行計劃 ${plan.id} 沒有包含活動數據，將使用佔位元素`);
+            }
+            
             return plan as TravelPlan;
           });
           setTravelPlans(validatedPlans);
@@ -454,13 +551,33 @@ const MyTravelPlansPage: React.FC = () => {
                   }
                 }}
               >
-                {/* 計劃預覽圖 - 可以根據目的地顯示不同圖片 */}
-                <div className="h-40 bg-blue-100 relative">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                  </div>
+                {/* 計劃預覽圖 - 從活動中抓取圖片 */}
+                <div className="h-40 bg-gray-100 relative">
+                  {(() => {
+                    const activityPhoto = getPreviewImage(plan);
+                    
+                    if (activityPhoto) {
+                      // 如果有活動圖片，直接使用
+                      return (
+                        <div 
+                          className="absolute inset-0 bg-center bg-cover" 
+                          style={{ 
+                            backgroundImage: `url('${activityPhoto}')` 
+                          }}
+                        />
+                      );
+                    } else {
+                      // 如果沒有活動圖片，顯示簡單的佔位元素和目的地名稱
+                      return (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-blue-50">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-blue-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                          </svg>
+                          <span className="text-blue-700 font-medium">{plan.destination || '未知目的地'}</span>
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
                 
                 <div className="p-4">

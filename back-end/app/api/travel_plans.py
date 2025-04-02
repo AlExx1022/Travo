@@ -64,6 +64,10 @@ def get_travel_plans():
     limit = int(request.args.get('limit', 10))
     skip = (page - 1) * limit
     
+    # 檢查是否需要包含活動數據
+    include_activities = request.args.get('include_activities', 'false').lower() == 'true'
+    logger.info(f"獲取旅行計劃列表 - 用戶: {user_id}, 包含活動: {include_activities}")
+    
     # 查詢用戶的旅行計劃
     plans = TravelPlan.find_by_user(user_id, limit=limit, skip=skip)
     
@@ -71,24 +75,39 @@ def get_travel_plans():
     formatted_plans = []
     for plan in plans:
         formatted_plan = {
-            'plan_id': str(plan['_id']),
+            'id': str(plan['_id']),  # 使用'id'而不是'plan_id'，保持與前端一致
             'title': plan['title'],
             'destination': plan['destination'],
             'start_date': plan['start_date'],
             'end_date': plan['end_date'],
             'created_at': plan['created_at'].isoformat(),
             'updated_at': plan['updated_at'].isoformat(),
-            'is_public': plan['is_public']
+            'is_public': plan['is_public'],
+            'budget': plan.get('budget', '0'),
+            'travelers': plan.get('travelers', 1)
         }
+        
+        # 如果請求需要包含活動數據
+        if include_activities and 'days' in plan:
+            formatted_plan['days'] = plan['days']
+            logger.info(f"旅行計劃 {formatted_plan['id']} 包含 {len(plan['days'])} 天的行程")
+            
+            # 計算活動數量和照片數量進行日誌記錄
+            total_activities = 0
+            activities_with_photos = 0
+            
+            for day in plan['days']:
+                if 'activities' in day:
+                    total_activities += len(day['activities'])
+                    for activity in day['activities']:
+                        if 'photos' in activity and activity['photos']:
+                            activities_with_photos += 1
+            
+            logger.info(f"旅行計劃 {formatted_plan['id']} 共有 {total_activities} 個活動，其中 {activities_with_photos} 個有照片")
+        
         formatted_plans.append(formatted_plan)
     
-    return jsonify({
-        'success': True,
-        'plans': formatted_plans,
-        'page': page,
-        'limit': limit,
-        'total': len(formatted_plans)  # 注意：這只是當前頁的數量，不是總數
-    }), 200
+    return jsonify(formatted_plans), 200
 
 @api_bp.route('/travel-plans/<plan_id>', methods=['GET'])
 @token_required
