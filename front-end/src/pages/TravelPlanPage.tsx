@@ -1055,6 +1055,17 @@ const TravelPlanPage: React.FC = () => {
                       ? day.activities 
                       : [];
                     
+                    // 計算前幾天的活動總數
+                    let previousActivitiesCount = 0;
+                    for (let i = 0; i < index; i++) {
+                      const prevDayActivities = Array.isArray(travelPlan.days[i]?.activities)
+                        ? travelPlan.days[i].activities
+                        : [];
+                      previousActivitiesCount += prevDayActivities.length;
+                    }
+                    
+                    console.log(`第 ${index + 1} 天之前的活動總數: ${previousActivitiesCount}`);
+                    
                     return (
                       <div key={index} className="mb-8">
                         <DaySection
@@ -1063,6 +1074,7 @@ const TravelPlanPage: React.FC = () => {
                           activities={validActivities}
                           onDeleteActivity={handleDeleteActivity}
                           onAddActivity={handleStartAddActivity}
+                          previousActivitiesCount={previousActivitiesCount}
                         />
                       </div>
                     );
