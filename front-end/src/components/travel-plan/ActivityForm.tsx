@@ -340,37 +340,16 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
       if (input && input.value) {
         const inputValue = input.value.trim();
         if (inputValue) {
-          // 提取簡潔的地點名稱
-          let simpleName = inputValue;
-          
-          // 嘗試從地址中提取主要地點名稱
-          if (inputValue.includes('台灣') || inputValue.includes('縣') || inputValue.includes('市') || inputValue.includes('區')) {
-            // 嘗試找出最後的實體名稱
-            const nameRegex = /(?:.*[縣市區鄉鎮村])(.*)/;
-            const match = inputValue.match(nameRegex);
-            if (match && match[1] && match[1].trim() !== '') {
-              simpleName = match[1].trim();
-            }
-          } else {
-            // 嘗試提取最後的場所名稱
-            const parts = inputValue.split(/[,，、\s]/);
-            if (parts.length > 1) {
-              simpleName = parts[parts.length - 1].trim();
-            }
-          }
-          
-          console.log('提取的簡短名稱:', simpleName);
-          
-          // 創建簡單的地點對象，使用提取的簡短名稱作為名稱
+          // 創建簡單的地點對象，使用輸入值作為名稱
           const simplePlace = {
-            name: simpleName,
+            name: inputValue,
             formatted_address: inputValue,
             place_id: ''
           };
           
-          // 處理地點詳情，將提取的簡短名稱傳入
-          processPlaceDetails(simplePlace, simpleName);
-          toast.success(`已使用地點名稱: ${simpleName}`);
+          // 處理地點詳情，將輸入值同時作為簡短名稱傳入
+          processPlaceDetails(simplePlace, inputValue);
+          toast.success(`已使用地點名稱: ${inputValue}`);
         }
       }
     };
