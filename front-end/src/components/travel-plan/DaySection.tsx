@@ -26,9 +26,10 @@ interface DaySectionProps {
   activities: Activity[];
   onDeleteActivity?: (dayIndex: number, activityId: string) => void;
   onAddActivity?: (dayIndex: number) => void;
+  previousActivitiesCount?: number; // 前面所有天的活動總數
 }
 
-const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDeleteActivity, onAddActivity }) => {
+const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDeleteActivity, onAddActivity, previousActivitiesCount = 0 }) => {
   // 格式化日期
   const formatDate = (dateString: string): string => {
     try {
@@ -156,6 +157,11 @@ const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDelete
             <div key={activity.id || `activity-${index}`} className="relative">
               {/* 活動卡片 */}
               <div className="mb-3 relative">
+                {/* 序號標籤 - 藍色圓圈白色數字 */}
+                <div className="absolute -top-2 -left-2 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center z-10 shadow-md">
+                  <span className="text-xs font-bold">{previousActivitiesCount + index + 1}</span>
+                </div>
+                
                 {/* 刪除按鈕 */}
                 {onDeleteActivity && (
                   <button
