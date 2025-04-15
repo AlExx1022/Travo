@@ -10,6 +10,7 @@ import ActivityForm from '../components/travel-plan/ActivityForm';
 import { useAuth } from '../contexts/AuthContext';
 import travelPlanService from '../services/travelPlanService';
 import toast from 'react-hot-toast';
+import PlanMap from '../components/travel-plan/PlanMap';
 
 // API URL設置 - 從環境變數中獲取
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -846,6 +847,24 @@ const TravelPlanPage: React.FC = () => {
     }
   };
   
+  // 獲取所有活動
+  const getAllActivities = (): Activity[] => {
+    if (!travelPlan || !travelPlan.days) return [];
+    
+    let allActivities: Activity[] = [];
+    travelPlan.days.forEach(day => {
+      if (day.activities && Array.isArray(day.activities)) {
+        // 過濾掉已在本地刪除的活動
+        const filteredActivities = day.activities.filter(
+          activity => activity.id && !locallyDeletedActivities.includes(activity.id)
+        );
+        allActivities = [...allActivities, ...filteredActivities];
+      }
+    });
+    
+    return allActivities;
+  };
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -1089,14 +1108,24 @@ const TravelPlanPage: React.FC = () => {
             </div>
           </div>
           
-          {/* 右側區域 - 預留空間，未來可以添加地圖、總結等 */}
+          {/* 右側區域 - 顯示地圖和行程摘要 */}
           <div className="hidden lg:block">
             <div className="bg-white rounded-lg shadow-md p-4 sticky top-20">
-              <h3 className="text-lg font-semibold mb-4 text-gray-800">旅行計劃摘要</h3>
-              {/* 這裡預留給地圖或其他內容 */}
-              <div className="bg-gray-100 p-4 rounded-lg text-center text-gray-500 h-96 flex items-center justify-center">
-                <p>未來將顯示地圖或其他內容</p>
-              </div>
+              <h3 className="text-lg font-semibold mb-4 text-gray-800">旅行計劃地圖</h3>
+              {travelPlan && (
+                <PlanMap 
+                  activities={getAllActivities().map((act, index) => ({
+                    id: act.id || `temp-${index}`,
+                    name: act.name,
+                    lat: act.lat,
+                    lng: act.lng,
+                    order: index + 1,
+                    type: act.type,
+                    time: act.time
+                  }))} 
+                  destination={travelPlan.destination}
+                />
+              )}
             </div>
           </div>
         </div>
