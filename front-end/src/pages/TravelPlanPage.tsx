@@ -963,9 +963,9 @@ const TravelPlanPage: React.FC = () => {
       )}
       
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* 左側區域 - 旅行計劃內容 */}
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-7 gap-8">
+          {/* 左側區域 - 旅行計劃內容 - 減小寬度比例 */}
+          <div className="lg:col-span-3">
             {/* 旅行計劃標題區域 */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-6 relative">
               <div className="flex flex-wrap justify-between items-start mb-4">
@@ -1108,23 +1108,28 @@ const TravelPlanPage: React.FC = () => {
             </div>
           </div>
           
-          {/* 右側區域 - 顯示地圖和行程摘要 */}
-          <div className="hidden lg:block">
+          {/* 右側區域 - 顯示地圖和行程摘要 - 增加寬度比例 */}
+          <div className="hidden lg:block lg:col-span-4">
             <div className="bg-white rounded-lg shadow-md p-4 sticky top-20">
-              <h3 className="text-lg font-semibold mb-4 text-gray-800">旅行計劃地圖</h3>
+              <h3 className="text-lg font-semibold mb-4 text-gray-800 flex justify-between items-center">
+                <span>旅行計劃地圖</span>
+                <span className="text-xs text-gray-500 font-normal">點擊標記查看詳情，點擊空白處關閉</span>
+              </h3>
               {travelPlan && (
-                <PlanMap 
-                  activities={getAllActivities().map((act, index) => ({
-                    id: act.id || `temp-${index}`,
-                    name: act.name,
-                    lat: act.lat,
-                    lng: act.lng,
-                    order: index + 1,
-                    type: act.type,
-                    time: act.time
-                  }))} 
-                  destination={travelPlan.destination}
-                />
+                <div className="h-[750px] rounded-lg overflow-hidden border border-gray-200">
+                  <PlanMap 
+                    activities={getAllActivities().map((act, index) => ({
+                      id: act.id || `temp-${index}`,
+                      name: act.name,
+                      lat: act.lat,
+                      lng: act.lng,
+                      order: index + 1,
+                      type: act.type,
+                      time: act.time
+                    }))} 
+                    destination={travelPlan.destination}
+                  />
+                </div>
               )}
             </div>
           </div>
