@@ -135,7 +135,7 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
     if (!autocompleteContainerRef.current) return;
     
     try {
-      console.log('初始化 Google Places 自動完成');
+      console.log('初始化 Google Places Autocomplete 功能');
       
       // 清空容器
       autocompleteContainerRef.current.innerHTML = '';
@@ -146,9 +146,17 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
         throw new Error('Google Maps API 未正確載入');
       }
 
-      // 創建輸入框
+      // 使用新版 Autocomplete 元件
+      // 創建 Autocomplete 元素容器
+      const autocompleteCard = document.createElement('div');
+      autocompleteCard.id = 'place-autocomplete-card';
+      autocompleteCard.className = 'w-full mb-2';
+      autocompleteContainerRef.current.appendChild(autocompleteCard);
+      
+      // 創建輸入元素
       const input = document.createElement('input');
       input.type = 'text';
+      input.id = 'place-autocomplete-input';
       input.className = 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500';
       input.placeholder = '輸入地點名稱進行搜尋...';
       
@@ -160,18 +168,14 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
         }
       });
       
-      // 添加輸入框到容器
-      autocompleteContainerRef.current.appendChild(input);
-      
-      // 確保輸入框不會被灰色禁用
-      input.setAttribute('autocomplete', 'off');
+      autocompleteCard.appendChild(input);
       
       // 創建 Autocomplete 實例
       const options = {
         fields: ['place_id', 'name', 'formatted_address', 'geometry', 'rating', 'photos', 'vicinity', 'types']
       };
       
-      // @ts-ignore - 忽略 window.google.maps.places.Autocomplete 可能類型不匹配的警告
+      // 建立 Autocomplete
       const autocomplete = new window.google.maps.places.Autocomplete(input, options);
       
       // 存儲 autocomplete 引用以便後續訪問
@@ -183,125 +187,105 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
           const place = autocomplete.getPlace();
           console.log("選擇的地點:", place);
           
-          // 從輸入框文本中提取主要名稱
-          const inputValue = input.value;
+          if (!place.geometry || !place.geometry.location) {
+            console.warn("選擇的地點沒有幾何資訊");
+            toast.error('無法獲取所選地點的位置資訊');
+            return;
+          }
           
-          // 獲取最後一個實體名稱（通常是主要場所名稱）
-          // 例如從「日本京都府京都市左京區 Okazaki Enshōjichō, 124 京都市京瓷美術館」提取「京都市京瓷美術館」
-          let simpleName = '';
-          
-          // 提取簡潔的地點名稱
           if (place && place.name) {
-            // 優先使用 place 物件中的名稱
-            simpleName = place.name;
+            processPlaceDetails(place);
+            toast.success(`已選擇地點: ${place.name}`);
           } else {
-            // 從輸入值中提取
-            // 移除數字和標點符號
-            const cleanInput = inputValue.replace(/\d+/g, '').trim();
-            
-            // 嘗試從地址中提取主要地點名稱
-            if (cleanInput.includes('台灣') || cleanInput.includes('縣') || cleanInput.includes('市') || cleanInput.includes('區')) {
-              // 嘗試找出最後的實體名稱
-              const nameRegex = /(?:.*[縣市區鄉鎮村])(.*)/;
-              const match = cleanInput.match(nameRegex);
-              if (match && match[1] && match[1].trim() !== '') {
-                simpleName = match[1].trim();
-              }
-            } else {
-              // 方法1: 基於常見的地點格式，嘗試提取最後部分
-              const parts = cleanInput.split(/[,，、]/); // 按逗號分割
-              
-              // 如果分割後有多個部分，取最後一個（通常是場所名稱）
-              if (parts.length > 1) {
-                simpleName = parts[parts.length - 1].trim();
-              } else {
-                // 方法2: 如果沒有分割成功，嘗試從最後一個空格後開始
-                const spaceIndex = cleanInput.lastIndexOf(' ');
-                if (spaceIndex !== -1) {
-                  simpleName = cleanInput.substring(spaceIndex).trim();
-                } else {
-                  // 如果以上都失敗，使用整個輸入值
-                  simpleName = cleanInput;
-                }
-              }
-            }
-          }
-          
-          // 確保名稱不為空
-          if (!simpleName) {
-            simpleName = inputValue;
-          }
-          
-          console.log('提取的簡短名稱:', simpleName);
-          
-          if (place && (place.place_id || place.name)) {
-            // 創建一個新的地點對象，使用提取的簡短名稱作為顯示名稱
-            const enhancedPlace = {
-              ...place,
-              originalName: place.name, // 保留原始名稱
-              name: simpleName // 使用提取的簡短名稱
-            };
-            
-            processPlaceDetails(enhancedPlace, simpleName);
-            toast.success(`已選擇地點: ${simpleName}`);
-          } else {
-            // 如果沒有獲取到地點或獲取的地點不完整，使用輸入值作為地點名稱
-            if (inputValue && inputValue.trim() !== '') {
-              const simplePlace = {
-                name: simpleName,
-                formatted_address: place?.formatted_address || inputValue,
-                place_id: place?.place_id || ''
-              };
-              processPlaceDetails(simplePlace, simpleName);
-              toast.success(`已使用輸入值: ${simpleName}`);
-            } else {
-              console.error('輸入值為空，無法創建地點');
-              toast.error('請輸入地點名稱');
-            }
+            console.error('選擇的地點沒有名稱');
+            toast.error('無法獲取所選地點的名稱');
           }
         } catch (error) {
           console.error('處理 place_changed 事件時出錯:', error);
-          
-          // 兜底：直接使用輸入框的值
-          if (input && input.value) {
-            const inputValue = input.value;
-            let simpleName = inputValue;
-            
-            // 嘗試從地址中提取主要地點名稱
-            if (inputValue.includes('台灣') || inputValue.includes('縣') || inputValue.includes('市') || inputValue.includes('區')) {
-              // 嘗試找出最後的實體名稱
-              const nameRegex = /(?:.*[縣市區鄉鎮村])(.*)/;
-              const match = inputValue.match(nameRegex);
-              if (match && match[1] && match[1].trim() !== '') {
-                simpleName = match[1].trim();
-              }
-            } else {
-              // 嘗試提取最後的場所名稱
-              const parts = inputValue.split(/[,，、\s]/);
-              if (parts.length > 1) {
-                simpleName = parts[parts.length - 1].trim();
-              }
-            }
-            
-            processPlaceDetails({
-              name: simpleName,
-              formatted_address: inputValue,
-              place_id: ''
-            }, simpleName);
-            toast.success(`已使用輸入值: ${simpleName}`);
-          } else {
-            toast.error('無法處理所選地點，請重新輸入');
-          }
+          toast.error('處理所選地點時出錯');
         }
       });
       
+      // 添加提示文字
+      const helpText = document.createElement('p');
+      helpText.className = 'text-xs text-gray-500 mt-1';
+      helpText.textContent = '輸入地點名稱後，從下拉列表中選擇一個地點';
+      autocompleteCard.appendChild(helpText);
+
       console.log('Places Autocomplete 初始化成功');
+      
+      // 保留後備搜尋按鈕，以防自動完成失敗
+      const searchButton = document.createElement('button');
+      searchButton.type = 'button';
+      searchButton.className = 'mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500';
+      searchButton.textContent = '手動搜尋地點';
+      searchButton.addEventListener('click', () => {
+        const searchText = input.value.trim();
+        if (searchText) {
+          searchPlaceByText(searchText);
+        } else {
+          toast.error('請輸入地點名稱');
+        }
+      });
+      
+      autocompleteContainerRef.current.appendChild(searchButton);
     } catch (error) {
       console.error('初始化地點自動完成時出錯:', error);
       toast.error('載入地點搜尋功能時發生問題');
       
       // 提供備用的純文本輸入框
       createSimpleInputFallback();
+    }
+  };
+  
+  // 使用文本搜尋地點 (保留為後備方案)
+  const searchPlaceByText = (searchText: string) => {
+    try {
+      if (!window.google || !window.google.maps || !window.google.maps.places) {
+        throw new Error('Google Maps API 未正確載入');
+      }
+      
+      // 創建一個隱藏的地圖元素 (Places Service 需要地圖元素)
+      let mapDiv = document.getElementById('hidden-map');
+      if (!mapDiv) {
+        mapDiv = document.createElement('div');
+        mapDiv.id = 'hidden-map';
+        mapDiv.style.display = 'none';
+        document.body.appendChild(mapDiv);
+      }
+      
+      // 創建地圖實例
+      const map = new window.google.maps.Map(mapDiv, {
+        center: { lat: 25.033964, lng: 121.564468 }, // 默認中心點 (台北)
+        zoom: 13,
+      });
+      
+      // 創建 Places Service
+      const service = new window.google.maps.places.PlacesService(map);
+      
+      // 設置搜尋請求
+      const request = {
+        query: searchText,
+        fields: ['name', 'formatted_address', 'place_id', 'geometry', 'rating', 'photos', 'types'],
+      };
+      
+      toast.loading('正在搜尋地點...', { id: 'place-search' });
+      
+      // 執行搜尋
+      service.findPlaceFromQuery(request, (results, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+          console.log('搜尋結果:', results);
+          const place = results[0];
+          processPlaceDetails(place);
+          toast.success(`找到地點: ${place.name}`, { id: 'place-search' });
+        } else {
+          console.error('找不到地點:', status);
+          toast.error(`找不到地點 "${searchText}"，請嘗試其他關鍵字`, { id: 'place-search' });
+        }
+      });
+    } catch (error) {
+      console.error('搜尋地點時出錯:', error);
+      toast.error('搜尋地點時發生錯誤');
     }
   };
   
@@ -383,8 +367,8 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
             // 檢查 photo 是否有 getUrl 方法
             if (photo && typeof photo.getUrl === 'function') {
               try {
-                // 使用 Google Photos API 獲取照片 URL
-                const photoUrl = photo.getUrl({ maxWidth: 1200, maxHeight: 800 });
+                // 使用 Google Photos API 獲取照片 URL - 使用與範例相似的方式
+                const photoUrl = photo.getUrl({ maxWidth: 400 });
                 if (photoUrl) {
                   photoUrls.push(photoUrl);
                 }
@@ -495,6 +479,7 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
       console.log('處理後的地點名稱:', placeName);
       console.log('處理後的評分:', rating);
       console.log('處理後的地址:', address);
+      console.log('照片 URL:', photoUrls);
       
       // 更新活動狀態
       setActivity(prev => {
@@ -562,14 +547,32 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayIndex, onSuccess, onCanc
     const savingToast = toast.loading('正在新增活動...');
     
     try {
-      console.log(`嘗試新增活動到第 ${dayIndex + 1} 天:`, activity);
-      const result = await travelPlanService.addActivity(planId, dayIndex, activity);
+      // 將活動資料複製一份，避免修改原始狀態
+      const activityToSave = { ...activity };
+      
+      // 確保照片 URL 正確儲存 - 直接儲存字串陣列
+      if (activityToSave.photos && activityToSave.photos.length > 0) {
+        console.log('準備儲存的照片 URL:', activityToSave.photos);
+      } else {
+        console.log('沒有照片需要儲存');
+      }
+      
+      console.log(`嘗試新增活動到第 ${dayIndex + 1} 天:`, activityToSave);
+      const result = await travelPlanService.addActivity(planId, dayIndex, activityToSave);
       
       console.log('新增活動的API回應:', result);
       
       if (result.success) {
         toast.success('活動新增成功', { id: savingToast });
-        onSuccess(); // 通知父組件更新
+        
+        // 先執行 onSuccess 回調通知父組件更新
+        onSuccess();
+        
+        // 延遲 1.5 秒後重整頁面，讓用戶有時間看到成功訊息
+        console.log('活動新增成功，準備重整頁面...');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       } else {
         throw new Error(result.message || '新增活動失敗');
       }

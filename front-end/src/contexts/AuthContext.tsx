@@ -1,57 +1,84 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { login as apiLogin, register as apiRegister, logout as apiLogout, getCurrentUser, isAuthenticated as checkAuth } from '../services/authService';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import * as authService from '../services/authService';
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-}
-
+// 認證上下文類型定義
 interface AuthContextType {
-  user: User | null;
-  isAuthenticated: boolean;
+  user: authService.User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  isAuthenticated: boolean;
 }
 
-// 創建上下文
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// 建立認證上下文
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: false,
+  login: async () => false,
+  register: async () => false,
+  logout: () => {},
+  isAuthenticated: false
+});
 
-// 上下文提供器組件
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+// 自定義 Hook 提供認證上下文的使用
+export const useAuth = () => useContext(AuthContext);
 
-  // 在組件加載時檢查本地存儲中是否有用戶會話
+// 認證提供者元件
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<authService.User | null>(null);
+  const [loading, setLoading] = useState<boolean>(true); // 初始設為 true
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
+  // 初始化時檢查是否已有有效的登入狀態
   useEffect(() => {
-    const checkAuthStatus = async () => {
+    const initAuth = async () => {
       try {
-        if (checkAuth()) {
-          const currentUser = getCurrentUser();
-          if (currentUser) {
-            setUser(currentUser);
+        // 檢查 localStorage 是否有令牌
+        const token = authService.getToken();
+        
+        if (token) {
+          // 獲取本地儲存的用戶資訊
+          const storedUser = authService.getCurrentUser();
+          
+          if (storedUser) {
+            // 設置認證狀態
+            setUser(storedUser);
+            setIsAuthenticated(true);
+            console.log('已自動恢復使用者登入狀態', storedUser);
+          } else {
+            // 有 token 但沒有用戶資訊，嘗試獲取用戶資訊
+            try {
+              // 這裡可以添加對後端的驗證請求，如果有提供這種 API
+              console.log('找到令牌但沒有用戶資訊，清除無效登入狀態');
+              authService.logout();
+            } catch (error) {
+              console.error('驗證令牌失敗:', error);
+              authService.logout();
+            }
           }
+        } else {
+          console.log('未找到認證令牌，用戶未登入');
         }
       } catch (error) {
-        console.error('驗證錯誤:', error);
+        console.error('認證初始化錯誤:', error);
+        // 出錯時清除登入狀態
+        authService.logout();
       } finally {
         setLoading(false);
       }
     };
-    
-    checkAuthStatus();
+
+    initAuth();
   }, []);
 
-  // 登入功能
+  // 登入函數
   const login = async (email: string, password: string): Promise<boolean> => {
     setLoading(true);
     try {
-      const loggedInUser = await apiLogin(email, password);
-      setUser(loggedInUser);
+      const user = await authService.login(email, password);
+      setUser(user);
+      setIsAuthenticated(true);
       return true;
     } catch (error) {
       console.error('登入錯誤:', error);
@@ -61,26 +88,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // 註冊功能
+  // 註冊函數
   const register = async (name: string, email: string, password: string): Promise<boolean> => {
     setLoading(true);
     try {
-      const response = await apiRegister(name, email, password);
-      
-      if (response.success) {
-        // 註冊成功後自動登入
-        try {
-          const loggedInUser = await apiLogin(email, password);
-          setUser(loggedInUser);
-          return true;
-        } catch (loginError) {
-          console.error('註冊後登入失敗:', loginError);
-          // 即使登入失敗，註冊仍然是成功的
-          return true; 
-        }
-      }
-      
-      return false;
+      const response = await authService.register(name, email, password);
+      return response.success;
     } catch (error) {
       console.error('註冊錯誤:', error);
       return false;
@@ -89,36 +102,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // 登出功能
+  // 登出函數
   const logout = () => {
-    apiLogout();
+    authService.logout();
     setUser(null);
-    navigate('/login');
+    setIsAuthenticated(false);
   };
 
-  const authContextValue: AuthContextType = {
-    user,
-    isAuthenticated: !!user,
-    loading,
-    login,
-    register,
-    logout
-  };
-
+  // 提供上下文值
   return (
-    <AuthContext.Provider value={authContextValue}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      login, 
+      register, 
+      logout, 
+      isAuthenticated 
+    }}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-// 自定義鉤子，方便訪問上下文
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth 必須在 AuthProvider 內部使用');
-  }
-  return context;
-};
-
-export default AuthContext; 
+}; 

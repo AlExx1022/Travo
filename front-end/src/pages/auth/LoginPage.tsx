@@ -20,6 +20,7 @@ const LoginPage = () => {
       if (success) {
         // 登入成功，導航到首頁
         navigate('/');
+        console.log('登入成功，已導航到首頁');
       } else {
         setError('登入失敗，請檢查您的電子郵件和密碼');
       }

@@ -72,6 +72,7 @@ declare global {
   interface Window {
     initMap: () => Promise<void>;
     google: any;
+    __mapClickHandled?: boolean; // 添加可選的點擊處理標記
   }
 }
 
@@ -93,17 +94,27 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
     (activity) => typeof activity.lat === 'number' && typeof activity.lng === 'number'
   );
 
+  // 對活動進行排序 - 首先按時間排序，然後按 order 屬性排序
+  const sortedActivities = [...validActivities].sort((a, b) => {
+    // 如果有時間屬性，優先按時間排序
+    if (a.time && b.time) {
+      return a.time.localeCompare(b.time);
+    }
+    // 其次按 order 屬性排序
+    return a.order - b.order;
+  });
+
   // 計算地圖中心點
   const getMapCenter = () => {
-    if (validActivities.length === 0) {
+    if (sortedActivities.length === 0) {
       // 如果沒有活動，使用預設的中心點
       return { lat: 25.0330, lng: 121.5654 }; // 台北市中心
     }
 
     // 使用第一個活動的位置作為中心點，而不是計算平均值
     return {
-      lat: validActivities[0].lat,
-      lng: validActivities[0].lng
+      lat: sortedActivities[0].lat,
+      lng: sortedActivities[0].lng
     };
   };
 
@@ -290,19 +301,19 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
         // 清空先前的標記引用
         markersRef.current = [];
         
-        // 創建進階標記元素
-        validActivities.forEach((activity) => {
+        // 創建進階標記元素 - 使用排序後的活動列表
+        sortedActivities.forEach((activity, index) => {
           const advancedMarker = document.createElement('gmp-advanced-marker') as HTMLElement;
           advancedMarker.setAttribute('position', `${activity.lat},${activity.lng}`);
           advancedMarker.setAttribute('title', activity.name);
           
-          // 創建標記內容
+          // 創建標記內容 - 使用循環索引+1作為顯示的數字，確保按顯示順序編號
           const pinElement = new PinElement({
             background: getMarkerColorByType(activity.type),
             borderColor: '#FFFFFF',
             glyphColor: '#FFFFFF',
             scale: 1.2,
-            glyph: activity.order.toString(),
+            glyph: (index + 1).toString(), // 使用索引+1而不是 activity.order
           });
           
           // 設置標記內容
@@ -316,8 +327,8 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
           markersRef.current.push(advancedMarker);
         });
         
-        // 儲存活動位置映射，用於快速查找接近點擊位置的標記
-        const activityLocations = validActivities.reduce((map, activity, index) => {
+        // 儲存活動位置映射，用於快速查找接近點擊位置的標記 - 使用排序後的活動列表
+        const activityLocations = sortedActivities.reduce((map, activity, index) => {
           map[`${activity.lat},${activity.lng}`] = { activity, index };
           return map;
         }, {} as Record<string, { activity: Activity, index: number }>);
@@ -333,8 +344,8 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
             let foundNearbyMarker = false;
             
             // 找到最近的標記（如果在可接受範圍內）
-            for (let i = 0; i < validActivities.length; i++) {
-              const activity = validActivities[i];
+            for (let i = 0; i < sortedActivities.length; i++) {
+              const activity = sortedActivities[i];
               // 檢查距離是否在閾值內（約 50 米）
               const distance = Math.sqrt(
                 Math.pow(activity.lat - lat, 2) + 
@@ -407,8 +418,8 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
               let foundNearbyMarker = false;
               
               // 找到最近的標記（如果在可接受範圍內）
-              for (let i = 0; i < validActivities.length; i++) {
-                const activity = validActivities[i];
+              for (let i = 0; i < sortedActivities.length; i++) {
+                const activity = sortedActivities[i];
                 // 檢查距離是否在閾值內（約 50 米）
                 const distance = Math.sqrt(
                   Math.pow(activity.lat - lat, 2) + 
@@ -463,10 +474,10 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
           }
         });
         
-        // 為活動標記添加點擊事件 - 使用自定義名稱增強詳情
+        // 為活動標記添加點擊事件 - 使用排序後的活動列表
         markersRef.current.forEach((marker, index) => {
-          if (index < validActivities.length) {
-            const activity = validActivities[index];
+          if (index < sortedActivities.length) {
+            const activity = sortedActivities[index];
             
             marker.addEventListener('gmp-click', async () => {
               // 顯示詳情容器
@@ -587,10 +598,10 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
           }
         });
         
-        // 如果有活動，初始顯示第一個活動的詳情，並立即聚焦
-        if (validActivities.length > 0) {
+        // 如果有活動，初始顯示第一個活動的詳情，並立即聚焦 - 使用排序後的活動列表
+        if (sortedActivities.length > 0) {
           try {
-            const firstActivity = validActivities[0];
+            const firstActivity = sortedActivities[0];
             const latLng = new window.google.maps.LatLng(firstActivity.lat, firstActivity.lng);
             
             // 嘗試使用 Places API 查詢更豐富的信息
@@ -672,7 +683,7 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
     };
 
     // 如果活動列表改變但不為空，且地圖尚未載入，則載入地圖
-    if (validActivities.length > 0 && !mapLoaded) {
+    if (sortedActivities.length > 0 && !mapLoaded) {
       loadGoogleMapsApi();
     }
 
@@ -686,7 +697,7 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
       });
       eventListenersRef.current = [];
     };
-  }, [validActivities, mapLoaded]);
+  }, [sortedActivities, mapLoaded]);
 
   // 組件卸載時的清理
   useEffect(() => {
@@ -747,6 +758,27 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
       detailsContainerRef.current.style.display = showDetails ? 'block' : 'none';
     }
   }, [showDetails]);
+
+  // 強制在活動數據更新時重新初始化地圖
+  useEffect(() => {
+    // 當活動列表變化時，我們需要重置地圖狀態並重新初始化
+    if (mapLoaded && window.initMap) {
+      setMapLoaded(false); // 重置地圖載入狀態
+      
+      // 清除現有標記和引用
+      markersRef.current = [];
+      if (tempMarkerRef.current) {
+        tempMarkerRef.current.style.display = 'none';
+      }
+      
+      // 使用延時確保狀態更新後再重新初始化
+      setTimeout(() => {
+        if (window.initMap) {
+          window.initMap(); // 重新初始化地圖
+        }
+      }, 100);
+    }
+  }, [activities]); // 依賴於 activities 數組的變化
 
   return (
     <div 
