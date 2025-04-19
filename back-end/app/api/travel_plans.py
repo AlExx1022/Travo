@@ -259,29 +259,168 @@ def get_public_plans():
     limit = int(request.args.get('limit', 10))
     skip = (page - 1) * limit
     
+    # 獲取是否包含照片和活動資料的參數
+    include_photos = request.args.get('include_photos', 'true').lower() == 'true'  # 默認值改為 true
+    include_activities = request.args.get('include_activities', 'false').lower() == 'true'
+    
+    logger.info(f"獲取公開旅行計劃列表 - 包含照片: {include_photos}, 包含活動: {include_activities}")
+    
     # 查詢公開的旅行計劃
     plans = TravelPlan.find_public_plans(limit=limit, skip=skip)
+    
+    # 獲取查詢到的總計劃數
+    total_plans = len(plans)
+    logger.info(f"找到 {total_plans} 個公開旅行計劃")
     
     # 格式化計劃數據
     formatted_plans = []
     for plan in plans:
+        # 基本計劃資料
         formatted_plan = {
-            'plan_id': str(plan['_id']),
+            'id': str(plan['_id']),  # 使用 'id' 以保持與前端一致
+            'plan_id': str(plan['_id']),  # 保留 'plan_id' 以兼容舊代碼
             'title': plan['title'],
             'destination': plan['destination'],
             'start_date': plan['start_date'],
             'end_date': plan['end_date'],
             'created_at': plan['created_at'].isoformat(),
-            'updated_at': plan['updated_at'].isoformat()
+            'updated_at': plan['updated_at'].isoformat(),
+            'is_public': plan['is_public'],
+            'budget': plan.get('budget', '0'),
+            'travelers': plan.get('travelers', 1)
         }
+        
+        # 提取首張照片並添加到計劃資料中
+        first_photo_url = None
+        if include_photos and 'days' in plan:
+            # 遍歷每一天尋找照片
+            for day in plan['days']:
+                if 'activities' in day and not first_photo_url:
+                    for activity in day['activities']:
+                        if 'photos' in activity and activity['photos']:
+                            # 找到第一張照片
+                            first_photo_url = activity['photos'][0]
+                            break
+                if first_photo_url:
+                    break
+                            
+            # 如果找到照片，添加到計劃對象
+            if first_photo_url:
+                formatted_plan['cover_image'] = first_photo_url
+                logger.info(f"為計劃 {formatted_plan['id']} 找到封面圖片")
+        
+        # 如果請求需要包含活動和照片資料
+        if (include_activities or include_photos) and 'days' in plan:
+            formatted_plan['days'] = []
+            
+            # 記錄照片和活動的統計信息
+            total_activities = 0
+            activities_with_photos = 0
+            
+            # 處理每一天的資料
+            for day in plan['days']:
+                day_data = {'date': day.get('date', ''), 'activities': []}
+                
+                # 如果包含活動資料，加入活動
+                if 'activities' in day:
+                    # 對於每個活動
+                    for activity in day['activities']:
+                        activity_data = {}
+                        
+                        # 只保留需要的欄位，減少資料量
+                        if include_activities:
+                            activity_data = {
+                                'id': activity.get('id', ''),
+                                'name': activity.get('name', ''),
+                                'location': activity.get('location', ''),
+                                'time': activity.get('time', '')
+                            }
+                        
+                        # 如果需要照片且活動有照片
+                        if include_photos and 'photos' in activity and activity['photos']:
+                            # 如果只需要照片而不需要活動詳情
+                            if not include_activities:
+                                activity_data = {
+                                    'id': activity.get('id', ''),
+                                    'name': activity.get('name', '')
+                                }
+                            
+                            # 添加照片資料
+                            activity_data['photos'] = activity['photos']
+                            activities_with_photos += 1
+                        
+                        # 如果活動資料不為空，添加到當天的活動列表
+                        if activity_data:
+                            day_data['activities'].append(activity_data)
+                            total_activities += 1
+                
+                # 添加當天的資料到 days 陣列
+                if day_data['activities'] or include_activities:
+                    formatted_plan['days'].append(day_data)
+            
+            logger.info(f"旅行計劃 {formatted_plan['id']} 包含 {total_activities} 個活動，其中 {activities_with_photos} 個有照片")
+        
         formatted_plans.append(formatted_plan)
     
-    return jsonify({
+    # 返回結果
+    response = {
         'success': True,
         'plans': formatted_plans,
         'page': page,
         'limit': limit,
-        'total': len(formatted_plans)
+        'total': total_plans
+    }
+    
+    # 記錄返回結果
+    logger.info(f"公開旅行計劃 API 成功返回 {len(formatted_plans)} 個計劃")
+    
+    return jsonify(response), 200
+
+@api_bp.route('/plans/public/<plan_id>', methods=['GET'])
+def get_public_plan(plan_id):
+    """獲取特定公開旅行計劃的詳情，無需登入"""
+    logger.info(f"收到請求獲取公開旅行計劃 ID: {plan_id}")
+    
+    # 查詢旅行計劃
+    plan = TravelPlan.find_by_id(plan_id)
+    
+    if not plan:
+        logger.warning(f"找不到旅行計劃 ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '找不到旅行計劃'
+        }), 404
+    
+    # 檢查計劃是否為公開
+    if not plan['is_public']:
+        logger.warning(f"嘗試訪問非公開計劃 ID: {plan_id}")
+        return jsonify({
+            'success': False,
+            'message': '此旅行計劃不是公開的'
+        }), 403
+    
+    # 格式化計劃數據
+    formatted_plan = {
+        'id': str(plan['_id']),
+        'user_id': str(plan['user_id']),
+        'title': plan['title'],
+        'created_at': plan['created_at'].isoformat(),
+        'updated_at': plan['updated_at'].isoformat(),
+        'is_public': plan['is_public'],
+        'version': plan['version'],
+        'destination': plan['destination'],
+        'start_date': plan['start_date'],
+        'end_date': plan['end_date'],
+        'budget': plan.get('budget', '0'),
+        'travelers': plan.get('travelers', 1),
+        'days': plan['days']
+    }
+    
+    logger.info(f"成功獲取公開旅行計劃 ID: {plan_id}")
+    
+    return jsonify({
+        'success': True,
+        'plan': formatted_plan
     }), 200
 
 @api_bp.route('/travel-plans/search', methods=['GET'])

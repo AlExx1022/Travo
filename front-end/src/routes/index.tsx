@@ -9,6 +9,8 @@ import RegisterPage from '../pages/auth/RegisterPage';
 import BuildPage from '../pages/BuildPage';
 import TravelPlanPage from '../pages/TravelPlanPage';
 import MyTravelPlansPage from '../pages/MyTravelPlansPage';
+import ExplorePage from '../pages/ExplorePage';
+import ViewTravelPlanPage from '../pages/ViewTravelPlanPage';
 
 // 受保護的路由組件
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -39,6 +41,9 @@ const AppRoutes: React.FC = () => {
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/explore" element={<ExplorePage />} />
+      <Route path="/plans/view/:planId" element={<ViewTravelPlanPage />} />
+      <Route path="/travel-plan/:planId" element={<ViewTravelPlanPage />} />
       
       {/* 受保護的路由 */}
       <Route path="/build" element={

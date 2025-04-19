@@ -1,7 +1,26 @@
 // API URL設置 - 從環境變數中獲取
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA === 'true'; // 環境變數控制是否使用模擬數據
 const API_TIMEOUT = 10000; // 設置API請求超時時間為10秒
+
+// 定義 TravelPlan 接口
+interface TravelPlan {
+  id: string;
+  title: string;
+  destination: string;
+  start_date: string;
+  end_date: string;
+  description?: string;
+  is_public: boolean;
+  cover_image?: string;
+  activities: any[];  // 修改為必須存在的數組
+  user_id: string;
+  username?: string;
+  created_at?: string;
+  name?: string;
+  startDate?: string;
+  endDate?: string;
+}
 
 // 啟動時輸出 API 配置信息
 console.log('API 設置信息:', {
@@ -14,7 +33,7 @@ console.log('API 設置信息:', {
 // 檢查API連接配置並輸出信息
 console.log('檢查API連接配置:');
 console.log('當前設定的API地址:', API_BASE_URL);
-console.log('使用的環境變數:', import.meta.env.VITE_API_URL || '未設置，使用預設值');
+console.log('使用的環境變數:', import.meta.env.VITE_API_URL || '未設置，使用相對路徑 /api');
 console.log('當前頁面URL:', window.location.href);
 console.log('預期的API完整地址:', `${API_BASE_URL}/travel-plans`);
 
@@ -243,98 +262,91 @@ class TravelPlanService {
    * @param planId 旅行計劃ID
    * @returns 包含旅行計劃詳情的回應
    */
-  async getTravelPlanById(planId: string) {
-    try {
-      if (!planId || planId === 'undefined') {
-        console.error('無效的旅行計劃ID:', planId);
-        throw new Error('無效的旅行計劃ID。請返回列表重新選擇有效的計劃。');
-      }
-      
-      console.log(`開始獲取旅行計劃 ${planId} 的詳情`);
-      
-      const token = localStorage.getItem('travo_auth_token');
-      if (!token) {
-        console.warn('未找到認證令牌，無法獲取旅行計劃');
-        throw new Error('未找到認證令牌，請重新登入');
-      }
-
-      console.log(`正在發送API請求獲取旅行計劃 ${planId}，完整 URL:`, `${API_BASE_URL}/travel-plans/${planId}`);
-      
+  async getTravelPlanById(planId: string): Promise<TravelPlan> {
+    console.log(`TravelPlanService: 嘗試獲取計畫 ID ${planId}`);
+    
+    // 嘗試多個可能的 API 端點 - 使用絕對路徑
+    const possibleEndpoints = [
+      `/travel-plans/${planId}`,
+      `/travel-plans/public/${planId}`,
+      `/plans/public/${planId}`
+    ];
+    
+    let lastError: Error | null = null;
+    let hasUnauthorizedError = false;
+    
+    for (const endpoint of possibleEndpoints) {
       try {
-        const response = await fetch(`${API_BASE_URL}/travel-plans/${planId}`, {
+        console.log(`TravelPlanService: 嘗試訪問端點 ${endpoint}`);
+        
+        const token = localStorage.getItem('travo_auth_token');
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        // 如果有令牌，添加到請求頭
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        // 直接使用 fetch 而不是 fetchWithRetry，更容易調試
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
           method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          },
-          mode: 'cors',
-          credentials: 'same-origin'
+          headers,
         });
         
-        console.log('API回應狀態:', response.status, response.statusText);
+        console.log(`TravelPlanService: 端點 ${endpoint} 響應狀態 ${response.status}`);
         
-        const data = await response.json();
-        
-        if (!response.ok) {
-          console.error('API請求不成功:', response.status, response.statusText);
-          console.error('API錯誤詳情:', data);
-          throw new Error(data.message || `請求失敗 (${response.status}): ${response.statusText}`);
-        }
-        
-        // 檢查API返回的數據格式是否符合要求
-        if (!data || typeof data !== 'object') {
-          console.error('API返回的數據格式不正確:', data);
-          throw new Error('API返回的數據格式不正確');
-        }
-        
-        // 記錄完整的數據結構
-        console.log(`旅行計劃 ${planId} 的完整數據:`, data);
-        console.log(`旅行計劃 ${planId} 的所有頂層屬性:`, Object.keys(data));
-        
-        // 檢查所有可能的 ID 欄位
-        console.log(`旅行計劃 ${planId} 的 ID 相關欄位:`, {
-          id: data.id,
-          _id: data._id,
-          planId: data.planId,
-          plan_id: data.plan_id
-        });
-        
-        // 處理 MongoDB ID 不一致問題
-        if (!data.id) {
-          if (data._id) {
-            console.log(`旅行計劃詳情缺少 id 欄位，從 _id 自動添加: ${data._id}`);
-            data.id = data._id;
-          } else if (data.planId) {
-            console.log(`旅行計劃詳情缺少 id 欄位，從 planId 自動添加: ${data.planId}`);
-            data.id = data.planId;
-          } else if (data.plan_id) {
-            console.log(`旅行計劃詳情缺少 id 欄位，從 plan_id 自動添加: ${data.plan_id}`);
-            data.id = data.plan_id;
-          } else {
-            // 這裡我們使用 planId 參數作為臨時 ID
-            console.log(`旅行計劃詳情沒有任何 ID 欄位，使用請求參數作為 ID: ${planId}`);
-            data.id = planId;
+        if (response.ok) {
+          // 嘗試作為 text 先獲取響應，方便調試
+          const textResponse = await response.text();
+          console.log(`TravelPlanService: 響應內容的前 100 個字符:`, textResponse.substring(0, 100));
+          
+          try {
+            // 解析為 JSON
+            const data = JSON.parse(textResponse);
+            
+            // 驗證數據格式
+            if (!data || typeof data !== 'object') {
+              throw new Error(`從端點 ${endpoint} 獲取的數據格式無效`);
+            }
+            
+            console.log(`TravelPlanService: 成功從端點 ${endpoint} 獲取計畫數據`);
+            
+            return data as TravelPlan;
+          } catch (parseError) {
+            console.error(`TravelPlanService: 無法解析 JSON 響應:`, parseError);
+            throw new Error(`從端點 ${endpoint} 獲取的數據不是有效的 JSON`);
           }
         }
         
-        // 記錄完整的 API 回應結構
-        console.log(`成功獲取旅行計劃 ${planId} 的詳情，ID 欄位確認:`, {
-          id: data.id,
-          _id: data._id,
-          '欄位是否匹配': data.id === data._id
-        });
+        if (response.status === 401) {
+          console.log(`TravelPlanService: 端點 ${endpoint} 返回未授權錯誤`);
+          hasUnauthorizedError = true;
+          throw new Error('需要登入才能查看此旅行計畫');
+        } else if (response.status === 404) {
+          throw new Error(`在端點 ${endpoint} 找不到計畫 ${planId}`);
+        } else {
+          throw new Error(`端點 ${endpoint} 響應錯誤: ${response.status} ${response.statusText}`);
+        }
+      } catch (error: any) {
+        console.error(`TravelPlanService: 從端點 ${endpoint} 獲取計畫失敗:`, error);
+        lastError = error;
         
-        return data;
-      } catch (networkError: any) {
-        console.error(`獲取旅行計劃 ${planId} 的網絡請求出錯:`, networkError);
-        console.error('錯誤類型:', networkError.name);
-        console.error('錯誤訊息:', networkError.message);
-        throw networkError;
+        // 如果非 401 錯誤，繼續嘗試下一個端點
+        if (error.message && error.message.includes('401')) {
+          hasUnauthorizedError = true;
+        }
       }
-    } catch (error: any) {
-      console.error(`獲取旅行計劃 ${planId} 時出錯:`, error);
-      throw error;
+    }
+    
+    // 如果所有端點都失敗
+    if (hasUnauthorizedError) {
+      throw new Error('此旅行計畫需要登入才能查看。請先登入後再嘗試訪問。');
+    } else if (lastError) {
+      throw lastError;
+    } else {
+      throw new Error(`無法獲取計畫 ${planId}，所有已知端點均失敗`);
     }
   }
 
@@ -396,8 +408,8 @@ class TravelPlanService {
   /**
    * 更新旅行計劃
    * @param planId 旅行計劃ID
-   * @param planData 更新的旅行計劃數據
-   * @returns 包含更新後的旅行計劃的回應
+   * @param planData 要更新的數據
+   * @returns 包含更新結果的回應
    */
   async updateTravelPlan(planId: string, planData: any) {
     try {
@@ -405,47 +417,62 @@ class TravelPlanService {
       
       const token = localStorage.getItem('travo_auth_token');
       if (!token) {
-        console.warn('未找到認證令牌，無法更新旅行計劃');
         throw new Error('未找到認證令牌，請重新登入');
       }
-
-      console.log(`正在發送API請求更新旅行計劃 ${planId}，完整 URL:`, `${API_BASE_URL}/travel-plans/${planId}`);
-      console.log('發送的數據:', JSON.stringify(planData).substring(0, 200) + '...');
       
-      try {
-        const response = await fetch(`${API_BASE_URL}/travel-plans/${planId}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          },
-          body: JSON.stringify(planData),
-          mode: 'cors',
-          credentials: 'same-origin'
-        });
-        
-        console.log('API回應狀態:', response.status, response.statusText);
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-          console.error('API請求不成功:', response.status, response.statusText);
-          console.error('API錯誤詳情:', data);
-          throw new Error(data.message || `請求失敗 (${response.status}): ${response.statusText}`);
-        }
-        
-        console.log(`成功更新旅行計劃 ${planId}`);
-        return data;
-      } catch (networkError: any) {
-        console.error(`更新旅行計劃 ${planId} 的網絡請求出錯:`, networkError);
-        console.error('錯誤類型:', networkError.name);
-        console.error('錯誤訊息:', networkError.message);
-        throw networkError;
+      const response = await this.fetchWithRetry(`${API_BASE_URL}/travel-plans/${planId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(planData)
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || `更新旅行計劃失敗 (${response.status}): ${response.statusText}`);
       }
+      
+      console.log('旅行計劃更新成功', data);
+      return data;
     } catch (error: any) {
       console.error('更新旅行計劃時出錯:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * 更新旅行計劃的隱私設置
+   * @param planId 旅行計劃ID
+   * @param isPublic 是否公開，true 表示公開，false 表示不公開
+   * @returns 包含更新結果的回應
+   */
+  async updateTravelPlanPrivacy(planId: string, isPublic: boolean) {
+    try {
+      console.log(`開始更新旅行計劃 ${planId} 的隱私設置為: ${isPublic ? '公開' : '不公開'}`);
+      
+      // 使用現有的 updateTravelPlan 方法，只更新 is_public 字段
+      const updateData = {
+        is_public: isPublic
+      };
+      
+      const result = await this.updateTravelPlan(planId, updateData);
+      
+      // 格式化回應
+      return {
+        success: true,
+        message: `旅行計劃已設為${isPublic ? '公開' : '不公開'}`,
+        data: result
+      };
+    } catch (error: any) {
+      console.error('更新旅行計劃隱私設置時出錯:', error);
+      return {
+        success: false,
+        message: error.message || '更新隱私設置失敗',
+        error: error.toString()
+      };
     }
   }
 
@@ -1131,6 +1158,159 @@ class TravelPlanService {
           message: `測試過程發生錯誤: ${error.message}`
         }]
       };
+    }
+  }
+
+  /**
+   * 獲取所有公開的旅行計畫
+   * @param options 可選參數，包含分頁、排序等設定
+   * @returns 包含公開旅行計畫的回應
+   */
+  async getPublicTravelPlans(options: { 
+    page?: number; 
+    limit?: number; 
+    sortBy?: string; 
+    sortOrder?: 'asc' | 'desc';
+    includePhotos?: boolean;
+    includeActivities?: boolean;
+  } = {}) {
+    try {
+      console.log('開始獲取公開旅行計畫', options);
+      
+      // 確保所有選項正確傳遞
+      const queryParams = new URLSearchParams();
+      
+      if (options.page) queryParams.append('page', options.page.toString());
+      if (options.limit) queryParams.append('limit', options.limit.toString());
+      if (options.sortBy) queryParams.append('sortBy', options.sortBy);
+      if (options.sortOrder) queryParams.append('sortOrder', options.sortOrder);
+      
+      // 使用後端API期望的參數名稱
+      queryParams.append('include_photos', options.includePhotos === true ? 'true' : 'false');
+      queryParams.append('include_activities', options.includeActivities === true ? 'true' : 'false');
+      queryParams.append('include_days', 'true'); // 關鍵：確保包含days陣列
+      queryParams.append('include_full_details', 'true'); // 確保包含完整詳細資訊
+      
+      console.log('API 查詢參數:', queryParams.toString());
+      
+      const response = await fetch(`${API_BASE_URL}/travel-plans/public?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        mode: 'cors'
+      });
+      
+      console.log('API回應狀態:', response.status, response.statusText);
+      
+      // 獲取原始文本以檢查JSON格式
+      const rawText = await response.text();
+      console.log('原始回應前100字符:', rawText.substring(0, 100) + '...');
+      
+      // 將文本解析為JSON
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (e) {
+        console.error('解析JSON失敗:', e);
+        throw new Error('無法解析服務器回應');
+      }
+      
+      if (!response.ok) {
+        console.error('API請求不成功:', response.status, response.statusText);
+        console.error('API錯誤詳情:', data);
+        throw new Error(data.message || `請求失敗 (${response.status}): ${response.statusText}`);
+      }
+      
+      // 處理返回數據
+      let processedData = data;
+      
+      // 處理數據，確保所有計劃的days和activities屬性格式正確
+      const processPlans = (plans: any[]) => {
+        return plans.map((plan: any) => {
+          // 確保計劃有正確的ID
+          if (!plan.id && plan._id) {
+            plan.id = plan._id;
+          } else if (!plan.id && plan.plan_id) {
+            plan.id = plan.plan_id;
+          }
+          
+          // 檢查並處理days字段
+          if (plan.days && typeof plan.days === 'string') {
+            try {
+              console.log(`計劃 ${plan.title} 的days是字符串，嘗試解析`);
+              plan.days = JSON.parse(plan.days);
+            } catch (e) {
+              console.error(`無法解析計劃 ${plan.title} 的days字符串:`, e);
+              plan.days = []; // 設置為空陣列避免後續錯誤
+            }
+          }
+          
+          // 檢查並處理activities字段
+          if (plan.activities && typeof plan.activities === 'string') {
+            try {
+              console.log(`計劃 ${plan.title} 的activities是字符串，嘗試解析`);
+              plan.activities = JSON.parse(plan.activities);
+            } catch (e) {
+              console.error(`無法解析計劃 ${plan.title} 的activities字符串:`, e);
+              plan.activities = []; // 設置為空陣列避免後續錯誤
+            }
+          }
+          
+          // 檢查封面圖片
+          if (plan.cover_image && plan.cover_image.startsWith('/')) {
+            plan.cover_image = `${window.location.origin}${plan.cover_image}`;
+          }
+          
+          // 如果存在plan_details字段且缺少days，嘗試從plan_details中提取
+          if (!plan.days && plan.plan_details) {
+            try {
+              const details = typeof plan.plan_details === 'string' 
+                ? JSON.parse(plan.plan_details) 
+                : plan.plan_details;
+                
+              if (details.days) {
+                plan.days = details.days;
+                console.log(`從plan_details中提取了days數據，共${plan.days.length}天`);
+              }
+            } catch (e) {
+              console.error('無法從plan_details提取days:', e);
+            }
+          }
+          
+          // 確保days存在且為陣列
+          if (!plan.days) {
+            plan.days = [];
+          }
+          
+          // 確保activities存在且為陣列
+          if (!plan.activities) {
+            plan.activities = [];
+          }
+          
+          return plan;
+        });
+      };
+      
+      // 根據數據結構處理
+      if (Array.isArray(data)) {
+        processedData = processPlans(data);
+      } else if (data && typeof data === 'object' && data.plans && Array.isArray(data.plans)) {
+        data.plans = processPlans(data.plans);
+        processedData = data;
+      }
+      
+      console.log('成功獲取公開旅行計畫，返回數據結構:', 
+        Array.isArray(processedData) 
+          ? `陣列，包含${processedData.length}個計劃` 
+          : `對象，包含${processedData.plans?.length || 0}個計劃`
+      );
+      
+      return processedData;
+    } catch (error: any) {
+      console.error('獲取公開旅行計畫時出錯:', error);
+      throw error;
     }
   }
 }
