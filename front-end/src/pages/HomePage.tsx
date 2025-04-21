@@ -1,6 +1,204 @@
 import Header from '../components/Header';
+import { useEffect, useState, useRef } from 'react';
+import Slider from 'react-slick';
+import 'slick-carousel/slick/slick.css';
+import 'slick-carousel/slick/slick-theme.css';
+
+// 獲取環境變數中的Google API金鑰
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+// 定義Google地圖API腳本載入狀態
+declare global {
+  interface Window {
+    google: any;
+    initGoogleMapsCallback: () => void;
+  }
+}
+
+// 定義15個世界著名旅遊景點
+const famousPlaces = [
+  { id: 1, name: '艾菲爾鐵塔', location: '巴黎，法國', searchTerm: 'Eiffel Tower, Paris, France' },
+  { id: 10, name: '台北101', location: '台北，台灣', searchTerm: 'Taipei 101, Taiwan' },
+  { id: 11, name: '雪梨歌劇院', location: '雪梨，澳洲', searchTerm: 'Sydney Opera House, Australia' },
+  { id: 4, name: '自由女神像', location: '紐約，美國', searchTerm: 'Statue of Liberty, New York, USA' },
+  { id: 5, name: '羅浮宮', location: '巴黎，法國', searchTerm: 'Louvre Museum, Paris, France' },
+  { id: 6, name: '聖托里尼島', location: '聖托里尼，希臘', searchTerm: 'Santorini, Greece' },
+  { id: 7, name: '馬丘比丘', location: '庫斯科，秘魯', searchTerm: 'Machu Picchu, Peru' },
+  { id: 8, name: '長城', location: '北京，中國', searchTerm: 'Great Wall of China, Beijing' },
+  { id: 9, name: '京都伏見稻荷大社', location: '京都，日本', searchTerm: 'Fushimi Inari Shrine, Kyoto, Japan' },
+  { id: 3, name: '聖家堂', location: '巴塞隆納，西班牙', searchTerm: 'Sagrada Familia, Barcelona, Spain' },
+  { id: 12, name: '大峽谷', location: '亞利桑那州，美國', searchTerm: 'Grand Canyon, Arizona, USA' },
+  { id: 13, name: '科隆巨石陣', location: '倫敦，英國', searchTerm: 'Stonehenge, UK' },
+  { id: 14, name: '布拉格城堡', location: '布拉格，捷克', searchTerm: 'Prague Castle, Czech Republic' },
+  { id: 15, name: '威尼斯', location: '威尼斯，義大利', searchTerm: 'Venice, Italy' }
+];
+
+// 照片資料型別
+interface PlaceImage {
+  id: number;
+  name: string;
+  location: string;
+  photoUrl: string;
+  attribution?: string;  // 添加照片歸屬說明
+}
 
 const HomePage = () => {
+  const [placeImages, setPlaceImages] = useState<PlaceImage[]>([]);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+  const placesServiceRef = useRef<any>(null);
+
+  // 輪播設置
+  const sliderSettings = {
+    dots: true,
+    infinite: true,
+    speed: 500,
+    slidesToShow: 1,
+    slidesToScroll: 1,
+    autoplay: true,
+    autoplaySpeed: 3000,
+    pauseOnHover: true,
+    adaptiveHeight: true,
+    fade: true
+  };
+
+  // 加載 Google Maps JavaScript API
+  useEffect(() => {
+    // 如果已經載入，則不重複載入
+    if (window.google && window.google.maps) {
+      setGoogleMapsLoaded(true);
+      return;
+    }
+
+    window.initGoogleMapsCallback = () => {
+      setGoogleMapsLoaded(true);
+    };
+
+    // 創建 script 元素並載入 Google Maps API
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places&callback=initGoogleMapsCallback`;
+    script.async = true;
+    script.defer = true;
+    
+    document.head.appendChild(script);
+    
+    return () => {
+      // 清理函數：移除腳本和回調
+      window.initGoogleMapsCallback = () => {};
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, []);
+
+  // 使用 Google Maps API 獲取地點照片
+  const getPlacePhotoUrl = async (searchTerm: string): Promise<{photoUrl: string, attribution?: string}> => {
+    return new Promise((resolve, reject) => {
+      if (!window.google || !window.google.maps) {
+        reject(new Error('Google Maps API 未載入'));
+        return;
+      }
+
+      // 初始化Places服務，如果尚未初始化
+      if (!placesServiceRef.current) {
+        // 需要一個DOM元素來初始化服務，但我們不會真的顯示地圖
+        const mapDiv = document.createElement('div');
+        const map = new window.google.maps.Map(mapDiv, {
+          center: { lat: 0, lng: 0 },
+          zoom: 2
+        });
+        placesServiceRef.current = new window.google.maps.places.PlacesService(map);
+      }
+
+      // 使用Places服務的findPlaceFromQuery方法搜索地點
+      placesServiceRef.current.findPlaceFromQuery(
+        {
+          query: searchTerm,
+          fields: ['name', 'photos', 'formatted_address']
+        },
+        (results: any, status: any) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+            const place = results[0];
+            
+            if (place.photos && place.photos.length > 0) {
+              const photo = place.photos[0];
+              const photoUrl = photo.getUrl({ maxWidth: 800, maxHeight: 600 });
+              const attribution = photo.html_attributions?.[0] || '';
+              
+              resolve({ photoUrl, attribution });
+            } else {
+              // 沒有照片，使用靜態地圖作為替代
+              const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(searchTerm)}&zoom=14&size=800x600&maptype=roadmap&markers=color:red%7C${encodeURIComponent(searchTerm)}&key=${GOOGLE_API_KEY}`;
+              resolve({ photoUrl: staticMapUrl });
+            }
+          } else {
+            console.error('找不到地點或搜索錯誤:', status);
+            // 沒有找到地點，使用靜態地圖
+            const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(searchTerm)}&zoom=14&size=800x600&maptype=roadmap&markers=color:red%7C${encodeURIComponent(searchTerm)}&key=${GOOGLE_API_KEY}`;
+            resolve({ photoUrl: staticMapUrl });
+          }
+        }
+      );
+    });
+  };
+
+  // 當Google Maps API載入完成後，加載所有景點照片
+  useEffect(() => {
+    const loadPlaceImages = async () => {
+      if (!googleMapsLoaded) return;
+
+      setLoading(true);
+      
+      try {
+        // 針對每個地點獲取照片
+        const imagesPromises = famousPlaces.map(async (place) => {
+          try {
+            const { photoUrl, attribution } = await getPlacePhotoUrl(place.searchTerm);
+            
+            return {
+              id: place.id,
+              name: place.name,
+              location: place.location,
+              photoUrl,
+              attribution
+            };
+          } catch (error) {
+            console.error(`獲取地點照片失敗: ${place.searchTerm}`, error);
+            // 單個地點錯誤時使用備用圖片
+            return {
+              id: place.id,
+              name: place.name,
+              location: place.location,
+              photoUrl: `https://via.placeholder.com/800x600?text=${encodeURIComponent(place.name)}`
+            };
+          }
+        });
+        
+        const images = await Promise.all(imagesPromises);
+        setPlaceImages(images);
+        setImagesLoaded(true);
+      } catch (error) {
+        console.error('無法加載景點照片', error);
+        
+        // 如果API調用失敗，使用備用圖片
+        const fallbackImages = famousPlaces.map(place => ({
+          id: place.id,
+          name: place.name,
+          location: place.location,
+          photoUrl: `https://via.placeholder.com/800x600?text=${encodeURIComponent(place.name)}`
+        }));
+        
+        setPlaceImages(fallbackImages);
+        setImagesLoaded(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadPlaceImages();
+  }, [googleMapsLoaded]);
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -32,10 +230,35 @@ const HomePage = () => {
                   </a>
                 </div>
               </div>
-              <div className="mt-12 lg:mt-0 hidden lg:block">
-                <div className="relative mx-auto w-full max-w-md rounded-lg shadow-xl">
-                  {/* 這裡可以放置旅行相關的圖片 */}
-                  <div className="bg-gray-300 rounded-lg h-64"></div>
+              <div className="mt-12 lg:mt-0 block">
+                <div className="relative mx-auto w-full max-w-md rounded-lg shadow-xl overflow-hidden">
+                  {/* 輪播圖 */}
+                  {imagesLoaded ? (
+                    <Slider {...sliderSettings} className="places-carousel">
+                      {placeImages.map((place) => (
+                        <div key={place.id} className="carousel-slide">
+                          <div className="relative">
+                            <img 
+                              src={place.photoUrl} 
+                              alt={`${place.name}, ${place.location}`} 
+                              className="w-full h-64 object-cover rounded-lg" 
+                            />
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
+                              <p className="text-white font-semibold text-lg">{place.name}</p>
+                              <p className="text-white/80 text-sm">{place.location}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </Slider>
+                  ) : (
+                    <div className="bg-gray-300 rounded-lg h-64 flex items-center justify-center">
+                      <svg className="animate-spin h-8 w-8 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -46,44 +269,28 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">熱門目的地</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* 東京卡片 */}
-            <div className="card destination-card">
-              <div className="image-container h-48 bg-gray-300 relative">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                  <h3 className="text-white text-xl font-bold">東京</h3>
+            {/* 顯示前三個熱門目的地卡片，並更新為使用 Place Photo API */}
+            {placeImages.slice(0, 3).map((place) => (
+              <div key={place.id} className="card destination-card">
+                <div className="image-container h-48 bg-gray-300 relative">
+                  <img 
+                    src={place.photoUrl}
+                    alt={place.name}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                    <h3 className="text-white text-xl font-bold">{place.name}</h3>
+                  </div>
                 </div>
-              </div>
-              <div className="p-4">
-                <p className="text-gray-600 mb-4">探索現代與傳統共存的大都市，從繁華的澀谷到古老的淺草寺。</p>
-                <a href="/explore/tokyo" className="text-blue-600 hover:text-blue-800 font-medium">探索東京 &rarr;</a>
-              </div>
-            </div>
-            
-            {/* 京都卡片 */}
-            <div className="card destination-card">
-              <div className="image-container h-48 bg-gray-300 relative">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                  <h3 className="text-white text-xl font-bold">京都</h3>
+                <div className="p-4">
+                  <p className="text-gray-600 mb-4">探索{place.location}的著名景點{place.name}，開始您的完美旅程。</p>
+                  <a href={`/explore/${place.name}`} className="text-blue-600 hover:text-blue-800 font-medium">探索{place.name} &rarr;</a>
                 </div>
+                {place.attribution && (
+                  <div className="px-4 pb-2 text-xs text-gray-500" dangerouslySetInnerHTML={{ __html: place.attribution }} />
+                )}
               </div>
-              <div className="p-4">
-                <p className="text-gray-600 mb-4">體驗日本傳統文化的心臟地帶，拜訪古老神社、寺廟和迷人的舊街道。</p>
-                <a href="/explore/kyoto" className="text-blue-600 hover:text-blue-800 font-medium">探索京都 &rarr;</a>
-              </div>
-            </div>
-            
-            {/* 台北卡片 */}
-            <div className="card destination-card">
-              <div className="image-container h-48 bg-gray-300 relative">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                  <h3 className="text-white text-xl font-bold">台北</h3>
-                </div>
-              </div>
-              <div className="p-4">
-                <p className="text-gray-600 mb-4">品嚐美食、參觀歷史景點和現代摩天大樓，體驗獨特的台灣文化。</p>
-                <a href="/explore/taipei" className="text-blue-600 hover:text-blue-800 font-medium">探索台北 &rarr;</a>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
         
@@ -138,33 +345,13 @@ const HomePage = () => {
               <p className="text-gray-400">智能旅行規劃平台</p>
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
-              <div>
-                <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">關於我們</h4>
-                <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-400 hover:text-white">公司簡介</a></li>
-                  <li><a href="#" className="text-gray-400 hover:text-white">團隊成員</a></li>
-                  <li><a href="#" className="text-gray-400 hover:text-white">加入我們</a></li>
-                </ul>
-              </div>
-              
-              <div>
-                <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">熱門目的地</h4>
-                <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-400 hover:text-white">東京</a></li>
-                  <li><a href="#" className="text-gray-400 hover:text-white">京都</a></li>
-                  <li><a href="#" className="text-gray-400 hover:text-white">台北</a></li>
-                </ul>
-              </div>
-              
-              <div>
-                <h4 className="text-sm font-semibold uppercase tracking-wider mb-3">支援</h4>
-                <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-400 hover:text-white">常見問題</a></li>
-                  <li><a href="#" className="text-gray-400 hover:text-white">聯絡我們</a></li>
-                  <li><a href="#" className="text-gray-400 hover:text-white">隱私政策</a></li>
-                </ul>
-              </div>
+            <div className="md:ml-auto">
+              <h4 className="text-sm font-semibold uppercase tracking-wider mb-5 md:text-right">支援</h4>
+              <ul className="space-y-2 md:text-right">
+                <li><a href="#" className="text-gray-400 hover:text-white">常見問題</a></li>
+                <li><a href="#" className="text-gray-400 hover:text-white">聯絡我們</a></li>
+                <li><a href="#" className="text-gray-400 hover:text-white">隱私政策</a></li>
+              </ul>
             </div>
           </div>
           
