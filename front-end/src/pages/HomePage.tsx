@@ -286,9 +286,7 @@ const HomePage = () => {
                   <p className="text-gray-600 mb-4">探索{place.location}的著名景點{place.name}，開始您的完美旅程。</p>
                   <a href={`/explore/${place.name}`} className="text-blue-600 hover:text-blue-800 font-medium">探索{place.name} &rarr;</a>
                 </div>
-                {place.attribution && (
-                  <div className="px-4 pb-2 text-xs text-gray-500" dangerouslySetInnerHTML={{ __html: place.attribution }} />
-                )}
+                
               </div>
             ))}
           </div>

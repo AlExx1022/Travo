@@ -17,24 +17,54 @@ TRAVO 是一個智能旅行規劃系統，使用 AI 技術為用戶創建個性�
 - **豐富的目的地資訊**：整合 Google Places API 提供詳細的景點資訊和照片
 - **個性化推薦**：根據用戶偏好和歷史記錄推薦旅行目的地和活動
 - **旅行計劃查看與分享**：瀏覽自己與他人的旅行計劃
+- **旅行日期規劃優化**：使用互動式日期選擇器，提供直觀的旅程長度計算
+- **預算管理功能**：協助用戶控制旅行預算，分配資源於住宿、交通和活動
+- **旅行興趣偏好設定**：多種興趣選項，讓旅行計劃更符合個人喜好
 
 ## 技術堆疊
 
 ### 前端
-- React + TypeScript
-- React Router v6 
-- Tailwind CSS 用於 UI 設計
-- Context API 用於狀態管理
-- Google Maps JavaScript API 用於獲取地點照片和資訊
-- React Slick 用於照片輪播功能
+- **React 18** + **TypeScript** 提供類型安全和更佳的開發體驗
+- **React Router v6** 實現先進的路由管理和導航
+- **Tailwind CSS** 用於快速開發響應式、現代化UI
+- **Context API** 用於應用全局狀態管理，尤其是用戶認證
+- **React Hooks** 包括自定義鉤子，用於狀態管理和副作用處理
+- **Google Maps JavaScript API** 整合地圖和地點服務
+- **React Slick** 用於照片輪播功能
+- **Axios** 處理API請求和響應
+- **Vite** 作為高效的開發和構建工具
+- **React-Datepicker** 實現日期範圍選擇功能
 
 ### 後端
-- Flask (Python)
-- MongoDB 用於數據儲存
-- JWT 用於認證
-- SQLAlchemy 用於數據庫操作
-- OpenAI API 用於生成旅行計劃
-- Google Places API 用於獲取地點信息
+- **Flask** (Python) 輕量級後端框架
+- **MongoDB** 用於非關係型數據儲存
+- **JWT** (JSON Web Tokens) 用於安全的用戶認證
+- **SQLAlchemy** 用於關係型數據庫操作
+- **OpenAI API** 使用GPT-4模型生成智能旅行計劃
+- **Google Maps Platform APIs**:
+  - Places API 用於地點搜索和詳細信息
+  - Geocoding API 用於地理編碼和解析
+  - Photos API 用於獲取高質量景點照片
+- **Flask-CORS** 處理跨源資源共享
+- **Bcrypt** 用於密碼加密存儲
+- **Python-dotenv** 安全管理環境變數
+
+## API 整合詳情
+
+### Google Maps Platform 整合
+- **Places API**: 用於搜索和建議旅遊目的地，提供景點詳情如評分、價格水平和開放時間
+- **Place Photos API**: 獲取高質量的地點照片，支持不同尺寸和解析度
+- **Geocoding API**: 將地址轉換為地理坐標，用於地圖顯示和路線規劃
+- **Maps JavaScript API**: 在前端實現互動式地圖，顯示旅行路線和景點位置
+- **Autocomplete API**: 在目的地輸入時提供實時地點建議
+- **Places UI Kit (Experimental)**: 用於將形成顯示於Map上免去觀看景點需要額外再開google map
+
+
+### OpenAI API 整合
+- 使用 **GPT-4** 模型根據用戶輸入生成個性化旅行建議
+- 智能分析用戶偏好，提供量身定制的景點和活動推薦
+- 根據旅遊時間、預算、興趣和旅遊風格生成最佳行程安排
+- 使用先進的自然語言處理技術生成豐富的景點描述
 
 ## 專案結構
 
@@ -100,6 +130,23 @@ back-end/
 └── requirements.txt           # 依賴項
 ```
 
+## 技術實現亮點
+
+### 前端優化
+- **響應式設計**: 基於 Tailwind CSS 的響應式布局，確保在手機、平板、桌面等各種設備上的最佳體驗
+- **性能優化**: 使用 React 懶加載和代碼分割，減少初始加載時間
+- **交互體驗**: 使用現代化過渡和動畫效果，提升用戶體驗
+- **表單處理**: 優化的表單驗證與錯誤處理機制
+- **地圖整合**: 無縫整合 Google 地圖服務，包括自動完成、地點照片和地圖顯示
+
+### 後端優化
+- **RESTful API**: 設計符合 REST 原則的 API 端點
+- **數據驗證**: 嚴格的請求數據驗證和錯誤處理
+- **安全性**: 實施 JWT 身份驗證、密碼加密和 CORS 策略
+- **可擴展性**: 模塊化設計確保系統可以輕鬆擴展
+- **異步處理**: 使用異步任務處理長時間運行的操作，如 AI 生成旅行計劃
+- **快取策略**: 實現智能快取減少 API 調用，提高響應速度
+
 ## 已完成功能模塊
 
 ### 用戶認證系統 ✅
@@ -137,6 +184,26 @@ back-end/
 - 活動時間軸展示
 - 景點圖片輪播
 
+## API 端點概覽
+
+### 用戶認證
+- `POST /api/auth/register` - 用戶註冊
+- `POST /api/auth/login` - 用戶登入
+- `GET /api/auth/profile` - 獲取用戶資料
+
+### 旅行計劃
+- `GET /api/travel-plans` - 獲取用戶旅行計劃列表
+- `GET /api/travel-plans/public` - 獲取公開旅行計劃
+- `GET /api/travel-plans/:id` - 獲取特定旅行計劃詳情
+- `POST /api/travel-plans` - 創建新旅行計劃
+- `PUT /api/travel-plans/:id` - 更新旅行計劃
+- `DELETE /api/travel-plans/:id` - 刪除旅行計劃
+
+### 旅行活動
+- `POST /api/travel-plans/:id/activities` - 添加活動
+- `PUT /api/travel-plans/:id/activities/:activity_id` - 更新活動
+- `DELETE /api/travel-plans/:id/activities/:activity_id` - 刪除活動
+
 ## 安裝與運行
 
 ### 前端
@@ -169,3 +236,4 @@ OPENAI_API_KEY=your_openai_api_key
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 MONGODB_URI=your_mongodb_uri
 ```
+
