@@ -1183,7 +1183,7 @@ const TravelPlanPage: React.FC = () => {
             <div className="bg-white rounded-lg shadow-md p-4 sticky top-20">
               <h3 className="text-lg font-semibold mb-4 text-gray-800 flex justify-between items-center">
                 <span>旅行計劃地圖</span>
-                <span className="text-xs text-gray-500 font-normal">點擊標記查看詳情，點擊空白處關閉</span>
+                <span className="text-xs text-gray-500 font-normal">若無顯示請重新刷新網頁</span>
               </h3>
               {travelPlan && (
                 <div className="h-[750px] rounded-lg overflow-hidden border border-gray-200">

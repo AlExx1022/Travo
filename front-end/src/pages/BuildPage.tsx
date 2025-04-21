@@ -581,7 +581,7 @@ const BuildPage = () => {
                         customInput={
                           <input
                             type="text"
-                            className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 py-3"
+                            className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 py-4 text-base min-h-[3.5rem]"
                           />
                         }
                       />
@@ -616,18 +616,28 @@ const BuildPage = () => {
                       </svg>
                       <span className="font-medium text-base text-blue-700">旅行摘要</span>
                     </div>
-                    <div className="pl-9 space-y-2">
-                      <div className="flex items-start">
-                        <span className="font-medium min-w-28">出發日期：</span>
-                        <span>{new Date(plan.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
+                    <div className="pl-9 space-y-3">
+                      <div className="flex flex-col">
+                        <span className="font-medium mb-1">出發日期：</span>
+                        <div className="bg-white bg-opacity-60 px-3 py-2 rounded-md break-words">
+                          {new Date(plan.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          <div className="text-xs text-blue-600 mt-1">
+                            {new Date(plan.startDate).toLocaleDateString('zh-TW', { weekday: 'long' })}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-start">
-                        <span className="font-medium min-w-28">返回日期：</span>
-                        <span>{new Date(plan.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</span>
+                      <div className="flex flex-col">
+                        <span className="font-medium mb-1">返回日期：</span>
+                        <div className="bg-white bg-opacity-60 px-3 py-2 rounded-md break-words">
+                          {new Date(plan.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          <div className="text-xs text-blue-600 mt-1">
+                            {new Date(plan.endDate).toLocaleDateString('zh-TW', { weekday: 'long' })}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center mt-1 pt-2 border-t border-blue-100">
-                        <span className="font-medium min-w-28">總天數：</span>
-                        <span className="bg-blue-600 text-white px-3 py-0.5 rounded-full font-medium">{getTripDuration()} 天</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center mt-2 pt-2 border-t border-blue-100">
+                        <span className="font-medium w-28 mb-1 sm:mb-0">總天數：</span>
+                        <span className="bg-blue-600 text-white px-3 py-0.5 rounded-full font-medium inline-block">{getTripDuration()} 天</span>
                       </div>
                     </div>
                   </div>
@@ -650,13 +660,26 @@ const BuildPage = () => {
                     <span className="text-gray-500 sm:text-sm">NT$</span>
                   </div>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     id="budget"
                     name="budget"
                     value={plan.budget}
-                    onChange={handleInputChange}
+                    onChange={(e) => {
+                      // 只允許數字
+                      const value = e.target.value.replace(/[^0-9]/g, '');
+                      setPlan({
+                        ...plan,
+                        budget: value
+                      });
+                    }}
                     placeholder="20000"
                     className="pl-12 pr-12 block w-full rounded-lg border-gray-300 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 py-3"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-gmap-noinput="true"
+                    aria-label="預算金額"
                   />
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <span className="text-gray-500 sm:text-sm">每人</span>
