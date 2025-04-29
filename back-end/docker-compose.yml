@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    environment:
+      - FLASK_ENV=development
+    volumes:
+      - ./app:/app/app  # 用於開發時的代碼熱重載
+    restart: unless-stopped
+    command: python app.py  # 開發環境使用 Flask 內建伺服器而非 gunicorn 

@@ -31,7 +31,16 @@ class Database:
         """初始化數據庫連接"""
         if Database._client is None:
             try:
-                logger.info(f"正在連接到MongoDB: {MONGO_URI}")
+                # 隱藏敏感信息
+                log_uri = MONGO_URI
+                if "mongodb+srv://" in log_uri:
+                    parts = log_uri.split("@")
+                    if len(parts) > 1:
+                        auth_part = parts[0].split(":")
+                        if len(auth_part) > 1:
+                            log_uri = f"{auth_part[0]}:******@{parts[1]}"
+                
+                logger.info(f"正在連接到MongoDB: {log_uri}")
                 Database._client = MongoClient(MONGO_URI)
                 Database._db = Database._client.travo
                 logger.info("MongoDB連接成功")

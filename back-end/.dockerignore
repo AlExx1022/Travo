@@ -1,0 +1,45 @@
+# Python 緩存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虛擬環境
+env/
+venv/
+ENV/
+
+# 環境變數文件（敏感資訊不應打包）
+.env
+.env.*
+
+# Git 文件
+.git/
+.gitignore
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 測試文件
+tests/
+
+# 日誌
+*.log
+
+# 其他不需要的目錄
+instance/
+enriched_plans/
+
+# 工具腳本
+tools/
+
+# Docker 相關
+Dockerfile
+.dockerignore
+
+# 其他臨時文件
+.DS_Store
+*.swp
+*.swo 
