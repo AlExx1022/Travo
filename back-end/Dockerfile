@@ -27,4 +27,4 @@ EXPOSE $PORT
 
 # 啟動命令
 # 使用 gunicorn 運行應用，設置適當的工作進程和線程
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app 
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:create_app

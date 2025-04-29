@@ -1,6 +1,17 @@
-from app import create_app
+# app.py
+from flask import Flask
 
-app = create_app()
+def create_app():
+    app = Flask(__name__)
+    # 在這裡添加路由和配置
+    return app
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8080) 
+# def create_app():
+#     app = Flask(__name__)
+#     # 在這裡添加路由和配置
+#     return app
+
+# # 僅在本地開發時使用內建伺服器
+# if __name__ == '__main__':
+#     app = create_app()
+#     app.run(debug=True, host='0.0.0.0', port=8080)  # 這會啟動內建伺服器
