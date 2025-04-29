@@ -6,12 +6,5 @@ def create_app():
     # 在這裡添加路由和配置
     return app
 
-# def create_app():
-#     app = Flask(__name__)
-#     # 在這裡添加路由和配置
-#     return app
-
-# # 僅在本地開發時使用內建伺服器
-# if __name__ == '__main__':
-#     app = create_app()
-#     app.run(debug=True, host='0.0.0.0', port=8080)  # 這會啟動內建伺服器
+# 不要在這裡執行 app.run()
+# 如果要部署，Flask 應該由 Gunicorn 啟動，不需要在 app.py 中運行
