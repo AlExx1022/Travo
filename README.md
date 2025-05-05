@@ -1,12 +1,15 @@
 # TRAVO - 智能旅行規劃系統
+![image](https://github.com/user-attachments/assets/23169087-a359-4b2a-b1b8-76600e323621)
 
 TRAVO 是一個智能旅行規劃系統，使用 AI 技術為用戶創建個性化的旅行行程，並整合了 Google Maps 和 Places API 提供豐富的目的地信息和視覺體驗。
-
-## 最近更新
-
-- 2023.04.10: 完成首頁設計與實現，整合 Google Maps JavaScript API 顯示世界著名景點照片，優化用戶體驗。
-- 2023.04.02: 完成旅行計劃活動刪除功能，解決資料庫操作中的不可變欄位問題，提升用戶體驗。
-- 2023.03.25: 將前端認證系統從模擬改為連接實際後端 API，完整支持用戶註冊與登入功能。
+# 建立自己的旅行計畫
+![image](https://github.com/user-attachments/assets/6dc9731f-01b5-466e-acdd-dfd88757f189)
+# 計畫由AI生成
+![image](https://github.com/user-attachments/assets/3c1305a8-d4ba-4adb-80a1-a3b4e2ef527f)
+# 新增自己的私人 景點打造專屬自己的旅行計畫
+![image](https://github.com/user-attachments/assets/6e51ec1c-c108-4f1c-9b72-6a3b687ee501)
+# 沒有想法? 參考別人的計畫
+![image](https://github.com/user-attachments/assets/22637204-9a90-410a-883f-a129394dd209)
 
 ## 功能
 
@@ -21,7 +24,6 @@ TRAVO 是一個智能旅行規劃系統，使用 AI 技術為用戶創建個性�
 - **預算管理功能**：協助用戶控制旅行預算，分配資源於住宿、交通和活動
 - **旅行興趣偏好設定**：多種興趣選項，讓旅行計劃更符合個人喜好
 
-## 技術堆疊
 
 ### 前端
 - **React 18** + **TypeScript** 提供類型安全和更佳的開發體驗
@@ -46,8 +48,7 @@ TRAVO 是一個智能旅行規劃系統，使用 AI 技術為用戶創建個性�
   - Geocoding API 用於地理編碼和解析
   - Photos API 用於獲取高質量景點照片
 - **Flask-CORS** 處理跨源資源共享
-- **Bcrypt** 用於密碼加密存儲
-- **Python-dotenv** 安全管理環境變數
+
 
 ## API 整合詳情
 
@@ -204,36 +205,5 @@ back-end/
 - `PUT /api/travel-plans/:id/activities/:activity_id` - 更新活動
 - `DELETE /api/travel-plans/:id/activities/:activity_id` - 刪除活動
 
-## 安裝與運行
 
-### 前端
-```bash
-cd front-end
-npm install
-npm run dev
-```
-
-### 後端
-```bash
-cd back-end
-pip install -r requirements.txt
-python app.py
-```
-
-## 環境變數設置
-前端需要以下環境變數：
-```
-VITE_API_BASE_URL=http://localhost:5000
-VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-```
-
-後端需要以下環境變數：
-```
-FLASK_APP=app.py
-FLASK_ENV=development
-SECRET_KEY=your_secret_key
-OPENAI_API_KEY=your_openai_api_key
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-MONGODB_URI=your_mongodb_uri
-```
 
