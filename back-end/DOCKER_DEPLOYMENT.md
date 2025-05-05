@@ -57,7 +57,6 @@ gcloud services enable secretmanager.googleapis.com
 
 ```bash
 # 將 MongoDB 連接字串存入 Secret Manager
-echo -n "mongodb+srv://admin123:PiSFks0aDAKzkee4@cluster0.yrhlv5u.mongodb.net/travo?retryWrites=true&w=majority&appName=Cluster0" | \
 gcloud secrets create mongo-uri --data-file=-
 
 # 設置其他必要的密鑰
