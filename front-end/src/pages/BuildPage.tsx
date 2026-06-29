@@ -135,8 +135,8 @@ const BuildPage = () => {
     
     setPlan(prev => ({
       ...prev,
-      startDate: start ? start.toISOString().split('T')[0] : '',
-      endDate: end ? end.toISOString().split('T')[0] : ''
+      startDate: start ? `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}` : '',
+      endDate: end ? `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}` : ''
     }));
   };
 
@@ -620,18 +620,40 @@ const BuildPage = () => {
                       <div className="flex flex-col">
                         <span className="font-medium mb-1">出發日期：</span>
                         <div className="bg-white bg-opacity-60 px-3 py-2 rounded-md break-words">
-                          {new Date(plan.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          {(() => {
+                            // 直接解析日期字符串，完全避免時區問題
+                            if (!plan.startDate) return '';
+                            const [year, month, day] = plan.startDate.split('-').map(Number);
+                            const date = new Date(year, month - 1, day);
+                            return date.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' });
+                          })()}
                           <div className="text-xs text-blue-600 mt-1">
-                            {new Date(plan.startDate).toLocaleDateString('zh-TW', { weekday: 'long' })}
+                            {(() => {
+                              if (!plan.startDate) return '';
+                              const [year, month, day] = plan.startDate.split('-').map(Number);
+                              const date = new Date(year, month - 1, day);
+                              return date.toLocaleDateString('zh-TW', { weekday: 'long' });
+                            })()}
                           </div>
                         </div>
                       </div>
                       <div className="flex flex-col">
                         <span className="font-medium mb-1">返回日期：</span>
                         <div className="bg-white bg-opacity-60 px-3 py-2 rounded-md break-words">
-                          {new Date(plan.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          {(() => {
+                            // 直接解析日期字符串，完全避免時區問題
+                            if (!plan.endDate) return '';
+                            const [year, month, day] = plan.endDate.split('-').map(Number);
+                            const date = new Date(year, month - 1, day);
+                            return date.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' });
+                          })()}
                           <div className="text-xs text-blue-600 mt-1">
-                            {new Date(plan.endDate).toLocaleDateString('zh-TW', { weekday: 'long' })}
+                            {(() => {
+                              if (!plan.endDate) return '';
+                              const [year, month, day] = plan.endDate.split('-').map(Number);
+                              const date = new Date(year, month - 1, day);
+                              return date.toLocaleDateString('zh-TW', { weekday: 'long' });
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -817,8 +839,14 @@ const BuildPage = () => {
   // 計算旅行天數
   const getTripDuration = (): number => {
     if (!plan.startDate || !plan.endDate) return 1; // 默認為 1 天
-    const startDate = new Date(plan.startDate);
-    const endDate = new Date(plan.endDate);
+    
+    // 直接解析日期，避免時區問題
+    const [startYear, startMonth, startDay] = plan.startDate.split('-').map(Number);
+    const [endYear, endMonth, endDay] = plan.endDate.split('-').map(Number);
+    
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+    
     const diffTime = endDate.getTime() - startDate.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // 計算天數（包括起始日）
   };

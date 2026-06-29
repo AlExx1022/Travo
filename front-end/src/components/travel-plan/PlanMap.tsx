@@ -9,6 +9,7 @@ interface Activity {
   order: number;
   type: string;
   time?: string;
+  day?: number;
 }
 
 // 定義組件 Props 接口
@@ -94,15 +95,18 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
     (activity) => typeof activity.lat === 'number' && typeof activity.lng === 'number'
   );
 
-  // 對活動進行排序 - 首先按時間排序，然後按 order 屬性排序
+  // 對活動進行排序 - 首先按天數排序，然後按時間排序，最後按 order 屬性排序
   const sortedActivities = [...validActivities].sort((a, b) => {
-    // 如果有時間屬性，優先按時間排序
-    if (a.time && b.time) {
-      return a.time.localeCompare(b.time);
-    }
-    // 其次按 order 屬性排序
+    // 僅按照 order 屬性排序
     return a.order - b.order;
   });
+  
+  // 添加調試日誌以檢查排序結果
+  console.log('排序後的活動列表:', sortedActivities.map((act, idx) => ({
+    索引: idx + 1,
+    名稱: act.name,
+    順序: act.order
+  })));
 
   // 計算地圖中心點
   const getMapCenter = () => {
@@ -307,13 +311,16 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
           advancedMarker.setAttribute('position', `${activity.lat},${activity.lng}`);
           advancedMarker.setAttribute('title', activity.name);
           
-          // 創建標記內容 - 使用循環索引+1作為顯示的數字，確保按顯示順序編號
+          // 創建標記內容 - 顯示行程編號
+          const markerNumber = (index + 1).toString();
+          console.log(`為活動 ${activity.name} 創建標記 #${markerNumber} (原順序: ${activity.order})`);
+          
           const pinElement = new PinElement({
             background: getMarkerColorByType(activity.type),
             borderColor: '#FFFFFF',
             glyphColor: '#FFFFFF',
             scale: 1.2,
-            glyph: (index + 1).toString(), // 使用索引+1而不是 activity.order
+            glyph: markerNumber, // 確保按照排序後的索引編號
           });
           
           // 設置標記內容
@@ -325,6 +332,45 @@ const PlanMap: React.FC<PlanMapProps> = ({ activities, destination }) => {
           // 添加標記到地圖
           mapElement.appendChild(advancedMarker);
           markersRef.current.push(advancedMarker);
+          
+          // 為標記添加點擊事件
+          advancedMarker.addEventListener('gmp-click', async () => {
+            console.log(`標記點擊: ${activity.name} (#${markerNumber})`);
+            
+            // 顯示詳情容器
+            if (detailsContainerRef.current) {
+              detailsContainerRef.current.style.display = 'block';
+            }
+            setShowDetails(true);
+            
+            // 創建位置對象
+            const latLng = new window.google.maps.LatLng(activity.lat, activity.lng);
+            
+            try {
+              // 獲取地圖實例
+              const map = (mapElementRef.current as any).innerMap;
+              if (!map) {
+                throw new Error('無法獲取地圖實例');
+              }
+              
+              // 嘗試使用位置配置詳情
+              if (placeDetailsElementRef.current) {
+                await (placeDetailsElementRef.current as any).configureFromLocation(latLng);
+              }
+              
+              // 顯示標記
+              if (tempMarkerRef.current) {
+                (tempMarkerRef.current as any).position = latLng;
+                tempMarkerRef.current.style.display = 'block';
+              }
+              
+              // 調整地圖視圖
+              map.panTo(latLng);
+              map.setZoom(16);
+            } catch (error) {
+              console.error('顯示標記詳情時出錯:', error);
+            }
+          });
         });
         
         // 儲存活動位置映射，用於快速查找接近點擊位置的標記 - 使用排序後的活動列表

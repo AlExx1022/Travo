@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ActivityCard from './ActivityCard';
 import TimelineConnector from './TimelineConnector';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,61 +30,27 @@ interface DaySectionProps {
 }
 
 const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDeleteActivity, onAddActivity, previousActivitiesCount = 0 }) => {
-  // 格式化日期
-  const formatDate = (dateString: string): string => {
+  const formattedDate = useMemo(() => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('zh-TW', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'long'
+      return new Date(date).toLocaleDateString('zh-TW', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
       });
-    } catch (error) {
-      console.error('日期格式化錯誤:', error);
-      return dateString;
+    } catch {
+      return date;
     }
-  };
-  
-  const formattedDate = formatDate(date);
-  
-  // 確保所有活動都有 ID
-  const activitiesWithIds = activities.map((activity, index) => {
-    if (!activity.id) {
-      // 為缺少 ID 的活動生成唯一 ID
-      const generatedId = uuidv4();
-      console.log(`[DaySection] 活動缺少 ID，已生成後端兼容的UUID: ${generatedId}`, activity);
-      return { ...activity, id: generatedId };
-    } else if (!isValidUuid(activity.id)) {
-      // 如果ID不是有效的UUID，記錄但不修改它
-      console.log(`[DaySection] 活動ID不是有效的UUID格式: ${activity.id}`, activity);
-    }
-    return activity;
-  });
-  
-  // 按照活動時間排序
-  const sortedActivities = [...activitiesWithIds].sort((a, b) => {
-    // 將時間字符串轉換為分鐘數以便比較
-    const timeToMinutes = (timeStr: string): number => {
-      if (!timeStr) return 0;
-      const [hours, minutes] = timeStr.split(':').map(Number);
-      return hours * 60 + minutes;
-    };
-    
-    const timeA = timeToMinutes(a.time || '00:00');
-    const timeB = timeToMinutes(b.time || '00:00');
-    
-    return timeA - timeB; // 升序排列，早的時間在前
-  });
-  
-  console.log(`[DaySection] 第 ${day} 天的活動已按時間排序`);
+  }, [date]);
 
-  // 檢查ID是否為有效的UUID
-  function isValidUuid(id: string): boolean {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(id);
-  }
-  
+  const sortedActivities = useMemo(() => {
+    const timeToMinutes = (t: string) => {
+      if (!t) return 0;
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    return activities
+      .map(a => a.id ? a : { ...a, id: uuidv4() })
+      .sort((a, b) => timeToMinutes(a.time || '00:00') - timeToMinutes(b.time || '00:00'));
+  }, [activities]);
+
   // 處理刪除活動
   const handleDeleteActivity = (activityId: string | undefined, activityIndex: number) => {
     // 記錄詳細的刪除信息
@@ -145,14 +111,14 @@ const DaySection: React.FC<DaySectionProps> = ({ day, date, activities, onDelete
             <p className="text-gray-600">{formattedDate}</p>
           </div>
           <div className="bg-blue-600 text-white rounded-full px-3 py-1 text-sm font-medium">
-            {activitiesWithIds.length} 個行程
+            {sortedActivities.length} 個行程
           </div>
         </div>
       </div>
-      
+
       {/* 活動列表 */}
       <div className="pl-4">
-        {activitiesWithIds.length > 0 ? (
+        {sortedActivities.length > 0 ? (
           sortedActivities.map((activity, index) => (
             <div key={activity.id || `activity-${index}`} className="relative">
               {/* 活動卡片 */}

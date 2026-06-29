@@ -1,5 +1,5 @@
 // API 基礎URL設置
-const API_URL = 'http://localhost:5001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 // 本地儲存令牌的鍵
 const TOKEN_KEY = 'travo_auth_token';

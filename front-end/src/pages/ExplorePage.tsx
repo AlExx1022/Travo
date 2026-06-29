@@ -6,6 +6,25 @@ import { toast, Toaster } from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { MapIcon } from '@heroicons/react/24/outline';
 
+const destinationImages: Record<string, string> = {
+  '東京': 'https://source.unsplash.com/featured/?tokyo,japan',
+  '京都': 'https://source.unsplash.com/featured/?kyoto,japan',
+  '大阪': 'https://source.unsplash.com/featured/?osaka,japan',
+  '紐約': 'https://source.unsplash.com/featured/?newyork,usa',
+  '倫敦': 'https://source.unsplash.com/featured/?london,uk',
+  '巴黎': 'https://source.unsplash.com/featured/?paris,france',
+  '羅馬': 'https://source.unsplash.com/featured/?rome,italy',
+  '香港': 'https://source.unsplash.com/featured/?hongkong',
+  '台北': 'https://source.unsplash.com/featured/?taipei,taiwan',
+  '新加坡': 'https://source.unsplash.com/featured/?singapore',
+  '首爾': 'https://source.unsplash.com/featured/?seoul,korea',
+  '曼谷': 'https://source.unsplash.com/featured/?bangkok,thailand',
+  '悉尼': 'https://source.unsplash.com/featured/?sydney,australia',
+  '上海': 'https://source.unsplash.com/featured/?shanghai,china',
+  '北京': 'https://source.unsplash.com/featured/?beijing,china',
+  '阿姆斯特丹': 'https://source.unsplash.com/featured/?amsterdam,netherlands',
+};
+
 // 定義旅行計畫類型
 interface TravelPlan {
   id: string;
@@ -48,43 +67,14 @@ const ExplorePage: React.FC = () => {
   // 添加環境變數檢測
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   
-  // 添加預設目的地圖片映射
-  const destinationImages: Record<string, string> = {
-    '東京': 'https://source.unsplash.com/featured/?tokyo,japan',
-    '京都': 'https://source.unsplash.com/featured/?kyoto,japan',
-    '大阪': 'https://source.unsplash.com/featured/?osaka,japan',
-    '紐約': 'https://source.unsplash.com/featured/?newyork,usa',
-    '倫敦': 'https://source.unsplash.com/featured/?london,uk',
-    '巴黎': 'https://source.unsplash.com/featured/?paris,france',
-    '羅馬': 'https://source.unsplash.com/featured/?rome,italy',
-    '香港': 'https://source.unsplash.com/featured/?hongkong',
-    '台北': 'https://source.unsplash.com/featured/?taipei,taiwan',
-    '新加坡': 'https://source.unsplash.com/featured/?singapore',
-    '首爾': 'https://source.unsplash.com/featured/?seoul,korea',
-    '曼谷': 'https://source.unsplash.com/featured/?bangkok,thailand',
-    '悉尼': 'https://source.unsplash.com/featured/?sydney,australia',
-    '上海': 'https://source.unsplash.com/featured/?shanghai,china',
-    '北京': 'https://source.unsplash.com/featured/?beijing,china',
-    '阿姆斯特丹': 'https://source.unsplash.com/featured/?amsterdam,netherlands',
-  };
-  
   // 根據目的地獲取預設圖片
   const getDefaultImageForDestination = useCallback((destination: string): string => {
-    // 如果有完全匹配的目的地
-    if (destinationImages[destination]) {
-      return destinationImages[destination];
+    if (destinationImages[destination]) return destinationImages[destination];
+    for (const [key, url] of Object.entries(destinationImages)) {
+      if (destination.includes(key)) return url;
     }
-    
-    // 檢查目的地是否包含已知的城市名稱
-    for (const [key, imageUrl] of Object.entries(destinationImages)) {
-      if (destination.includes(key)) {
-        return imageUrl;
-      }
-    }
-    
-    // 如果沒有匹配，返回基於目的地名稱的通用旅行照片
     return `https://source.unsplash.com/featured/?travel,${encodeURIComponent(destination)}`;
-  }, [destinationImages]);
+  }, []);
   
   useEffect(() => {
     fetchPublicTravelPlans();

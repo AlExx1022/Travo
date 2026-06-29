@@ -773,7 +773,7 @@ const TravelPlanPage: React.FC = () => {
   
   // 處理分享旅行計劃
   const handleSharePlan = () => {
-    const url = `${window.location.origin}/travel-plans/${planId}`;
+    const url = `${window.location.origin}/plans/view/${planId}`;
     setShareUrl(url);
     
     // 嘗試使用原生瀏覽器分享API
